@@ -1,0 +1,24 @@
+{
+  "name": "zarobkilekarzy-filmy",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.4"
+  },
+  "scripts": {
+    "sprawdz": "node narzedzia/sprawdz.mjs",
+    "nowy": "node narzedzia/nowy.mjs",
+    "serwer": "node silnik/serwer.mjs",
+    "eksport": "node silnik/eksport.mjs",
+    "lektor": "node silnik/lektor.mjs",
+    "napisy": "node silnik/napisy.mjs",
+    "kontrola": "node silnik/kontrola.mjs",
+    "strona": "node silnik/strona.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "mediabunny": "1.62.1",
+    "sharp": "0.35.5",
+    "wavesurfer.js": "8.0.3"
+  }
+}

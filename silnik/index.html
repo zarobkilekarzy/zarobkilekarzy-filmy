@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Film — podgląd</title>
+<link rel="stylesheet" href="fonty.css">
+<style>
+  html, body { margin: 0; background: #05080F; color: #DCE2EC; font: 14px Plex, system-ui, sans-serif; }
+  #wrap { max-width: min(100vw, calc((100vh - 96px) * 16 / 9)); margin: 0 auto; }
+  canvas { display: block; width: 100%; height: auto; background: #0A0F1C; }
+  .bar { display: flex; gap: 4px; align-items: center; padding: 6px 8px; flex-wrap: wrap; }
+  input[type=range] { flex: 1; min-width: 200px; }
+  button { font: 12px 'Plex Mono', monospace; color: #DCE2EC; background: #131B2E; border: 1px solid #2C3549; border-radius: 0; padding: 3px 8px; cursor: pointer; }
+  button.on { background: #2664EC; border-color: #2664EC; }
+  #vo { font: 18px Plex, sans-serif; padding: 8px 10px; min-height: 2.6em; color: #DCE2EC; border-top: 1px solid #2C3549; }
+  #tl { font: 12px 'Plex Mono', monospace; min-width: 12ch; }
+  #err { color: #FF8E82; font: 14px 'Plex Mono', monospace; padding: 12px; white-space: pre-wrap; }
+  /* ?embed=1 — sam kadr (odtwarzacz montażowy steruje czasem przez renderAt) */
+  body.embed { background: transparent; overflow: hidden; }
+  body.embed #wrap { max-width: none !important; }
+  body.embed .bar, body.embed #vo { display: none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="1920" height="1080"></canvas>
+  <div class="bar">
+    <button id="play" title="spacja">▶</button>
+    <span id="tl">0:00.0</span>
+    <input id="seek" type="range" min="0" max="31.5" step="0.01" value="0">
+    <button id="snd">dźwięk: wył.</button>
+    <button id="tts">lektor (syntezator): wył.</button>
+  </div>
+  <div class="bar" id="scenes"></div>
+  <div id="vo"></div>
+  <div id="err"></div>
+</div>
+<!-- ?film=filmy/<nazwa> (domyślnie szablon) · ?v=1 pion · ?sz=1 strefy aplikacji · ?ss=2 supersampling · #t=12.5 -->
+<script type="module" src="start.mjs"></script>
+</body>
+</html>

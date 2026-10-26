@@ -1,0 +1,13 @@
+node_modules/
+.DS_Store
+.env
+.env.*
+# Pliki wideo i klatki nigdy do repo — tylko lokalnie, do pracy (odtwarza je eksport z kodu)
+**/wynik/
+**/klatki/
+*.mp4
+*.mov
+*.webm
+*.m4s
+*.m3u8
+stykowka.png

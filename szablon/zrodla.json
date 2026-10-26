@@ -1,0 +1,10 @@
+{
+  "przyklad": {
+    "stopka": "Źródło: nazwa wydawcy, „Tytuł materiału”, data · zastrzeżenie, jeśli jest (np. „szacunek”, „według doniesień”)",
+    "krotko": "Źródło: nazwa wydawcy · data",
+    "typ": "fakt",
+    "liczby": ["123 000 zł"],
+    "linki": [{ "opis": "Tytuł materiału (wydawca, data)", "url": "https://example.org/" }],
+    "uwagi": "PRZYKŁAD do podmiany. typ: fakt | szacunek | model | doniesienia | prawo"
+  }
+}

@@ -31,23 +31,33 @@ const MIME = {
 const WRITABLE = new Set(['uwagi.json', 'znaczniki.json']);
 
 const isFilm = (dir) => fs.existsSync(path.join(dir, 'film.js')) || fs.existsSync(path.join(dir, 'proto', 'film.js'));
-/** Ścieżka z adresu (/filmy/x/lektor/a.wav) → plik w projekcie albo w generatorze; null, gdy nie ma albo wychodzi poza nie */
+/** Ścieżka z adresu (/filmy/x/lektor/a.wav) → plik w projekcie albo w generatorze; null, gdy nie ma, wychodzi poza nie
+    albo prowadzi przez plik lub katalog ukryty (.env z kluczem lektora, .git) */
 export function plik(p) {
   for (const base of new Set([PROJEKT, ROOT])) {
-    const f = path.resolve(base, `.${p}`);
-    if ((f === base || f.startsWith(base + path.sep)) && fs.existsSync(f)) return f;
+    const f = path.resolve(base, `.${p}`), rel = path.relative(base, f);
+    if (rel.startsWith('..') || path.isAbsolute(rel) || rel.split(path.sep).some((s) => s.startsWith('.'))) continue;
+    if (fs.existsSync(f)) return f;
   }
   return null;
 }
 
+// Zapis tylko z odtwarzacza tego serwera: Host = adres lokalny (obrona przed DNS rebinding), a Origin, jeśli jest, ten sam.
+// Przeglądarka dołącza Origin do każdego POST-a, więc obca strona nie przejdzie; skrypty bez Origin (curl, node) tak.
+function sameOrigin(req) {
+  const host = req.headers.host ?? '';
+  if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)) return false;
+  return req.headers.origin == null || req.headers.origin === `http://${host}`;
+}
+
 async function save(req, res, url) {
-  const film = url.searchParams.get('film') ?? '', plik = url.searchParams.get('plik') ?? '';
+  const film = url.searchParams.get('film') ?? '', nazwa = url.searchParams.get('plik') ?? '';
   const dir = plik(`/${film}`);
-  if (!WRITABLE.has(plik) || !dir || !isFilm(dir)) { res.writeHead(400).end('zły film albo plik'); return; }
+  if (!WRITABLE.has(nazwa) || !dir || !isFilm(dir)) { res.writeHead(400).end('zły film albo plik'); return; }
   let body = '';
   for await (const chunk of req) body += chunk;
   const data = JSON.parse(body);                                   // błąd składni → 500, plik zostaje bez zmian
-  fs.writeFileSync(path.join(dir, plik), `${JSON.stringify(data, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, nazwa), `${JSON.stringify(data, null, 2)}\n`);
   res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
 }
 
@@ -64,7 +74,11 @@ function send(req, res, file) {
 export function createServer() {
   return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
-    if (req.method === 'POST' && url.pathname === '/api/zapisz') { save(req, res, url).catch((e) => res.writeHead(500).end(String(e))); return; }
+    if (req.method === 'POST' && url.pathname === '/api/zapisz') {
+      if (!sameOrigin(req)) { res.writeHead(403).end('zapis tylko z odtwarzacza na tym serwerze'); return; }
+      save(req, res, url).catch((e) => res.writeHead(500).end(String(e)));
+      return;
+    }
     if (url.pathname === '/api/wersja') {
       // wersja filmu z gita (tag <nazwa>/vN + commit) — odtwarzacz zapisuje ją przy uwagach
       const dir = plik(`/${url.searchParams.get('film') ?? ''}`), name = path.basename(dir ?? '');

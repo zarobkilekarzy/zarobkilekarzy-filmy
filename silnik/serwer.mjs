@@ -5,7 +5,7 @@
 //
 //   node silnik/serwer.mjs [--port 4471]   → http://127.0.0.1:4471/odtwarzacz/?film=szablon (podgląd, oś czasu, uwagi)
 // GET /api/wersja?film=… → { wersja } (git describe) · GET /api/pliki?film=… → MP4 z <film>/wynik/
-// GET /api/dzwiek?film=… → miks dźwięku dla odtwarzacza (eksport --tylko-dzwiek, gdy plik starszy od treści filmu)
+// GET /api/dzwiek?film=…[&v=1] → miks dźwięku dla odtwarzacza, pion osobno (eksport --tylko-dzwiek, gdy plik starszy od treści filmu)
 // GET /api/napisy?film=… → { pl, en, cs } adresy VTT (silnik/napisy.mjs, gdy brak plików albo są starsze od tekstów)
 import http from 'node:http';
 import fs from 'node:fs';
@@ -111,7 +111,8 @@ export function createServer() {
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(mp4.map((f) => `/${film}/wynik/${f}`)));
         return;
       }
-      const wav = path.join(out, `${path.basename(dir)}-dzwiek.wav`);
+      // pion ma własny dźwięk: krótsza wersja (ujęcia `pion: false` wypadają) ma inne czasy
+      const vert = url.searchParams.get('v') === '1', wav = path.join(out, `${path.basename(dir)}${vert ? '-pion' : ''}-dzwiek.wav`);
       const src = ['film.js', 'teksty.js', 'lektor.js', 'znaczniki.json', 'proto/film.js'].map((f) => path.join(dir, f)).filter((f) => fs.existsSync(f));
       const fresh = fs.existsSync(wav) && src.every((f) => fs.statSync(f).mtimeMs <= fs.statSync(wav).mtimeMs);
       const reply = () => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ url: `/${film}/wynik/${path.basename(wav)}?${fs.statSync(wav).mtimeMs}` }));
@@ -124,7 +125,7 @@ export function createServer() {
         execFile('ffmpeg', ['-y', '-loglevel', 'error', '-i', path.join(out, mp4), '-vn', '-ac', '2', '-ar', '48000', wav], (e, _o, stderr) => (e ? res.writeHead(500).end(stderr || String(e)) : reply()));
         return;
       }
-      execFile(process.execPath, [path.join(ROOT, 'silnik', 'eksport.mjs'), dir, '--tylko-dzwiek'], (e, _o, stderr) => (e ? res.writeHead(500).end(stderr || String(e)) : reply()));
+      execFile(process.execPath, [path.join(ROOT, 'silnik', 'eksport.mjs'), dir, '--tylko-dzwiek', ...(vert ? ['--vert'] : [])], (e, _o, stderr) => (e ? res.writeHead(500).end(stderr || String(e)) : reply()));
       return;
     }
     // jedno narzędzie: adres główny prowadzi do odtwarzacza (podgląd na żywo, oś czasu, uwagi)

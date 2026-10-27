@@ -6,8 +6,8 @@
 Bez drugiego argumentu: najnowszy lektor.json w <film>/lektor/.
 
 Ogon: model potrafi po pauzie na końcu dograć ułamek sekundy szumu. Jeśli po ostatniej pauzie
-(≥ 0,1 s ciszy) zostaje mniej niż 0,4 s dźwięku, tniemy na początku tej pauzy (+50 ms) z wyciszeniem
-50 ms. Wynik: NN-k.wav obok NN-k.mp3; `speech` = długość mowy po przycięciu. Wyrównanie znaków
+(≥ 0,1 s ciszy) zostaje mniej niż 0,4 s dźwięku, tniemy 120 ms po początku tej pauzy z wyciszeniem 120 ms —
+krótsze wyciszenie brzmiało jak ucięcie słowa. Wynik: NN-k.wav obok NN-k.mp3; `speech` = długość mowy po przycięciu. Wyrównanie znaków
 (`align`) zostaje — film.js liczy z niego, kiedy lektor dochodzi do danej frazy.
 """
 import json, os, re, subprocess, sys
@@ -41,11 +41,11 @@ for c in L['clips']:
     if tail:
         a, b = tail[-1]
         if total - b < 0.4:
-            end = min(total, a + 0.05)
+            end = min(total, a + 0.12)
     wav = src.with_suffix('.wav')
-    fade = max(0.0, end - 0.05)
+    fade = max(0.0, end - 0.12)
     subprocess.run(['ffmpeg', '-nostdin', '-y', '-loglevel', 'error', '-i', str(src), '-af',
-                    f'atrim=0:{end:.3f},afade=t=out:st={fade:.3f}:d=0.05', '-ar', '48000', '-ac', '1', str(wav)], check=True)
+                    f'atrim=0:{end:.3f},afade=t=out:st={fade:.3f}:d=0.12', '-ar', '48000', '-ac', '1', str(wav)], check=True)
     c.update(wav=wav.name, start=round(start, 3), end=round(end, 3), speech=round(end - start, 3))
     print(f"{c['shot']:2}.{c['part']}  mowa {c['speech']:5.2f} s  ucięty ogon {total - end:4.2f} s  {c['text']}")
 

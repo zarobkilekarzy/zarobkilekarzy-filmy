@@ -7,13 +7,15 @@
 //   node silnik/eksport.mjs filmy/<nazwa> --vert          → pion 1080×1920 (TikTok, YouTube Shorts)
 //   node silnik/eksport.mjs filmy/<nazwa> --szkic         → szybki podgląd: 30 kl./s, bez blura, kodowanie w przeglądarce (mediabunny)
 //   node silnik/eksport.mjs filmy/<nazwa> --stills 0,5.2 [--vert] [--sz]   → wynik/klatki/*.png (--sz: strefy aplikacji)
-//   node silnik/eksport.mjs filmy/<nazwa> --tylko-dzwiek  → wynik/<nazwa>-dzwiek.wav (miks do odtwarzacza)
+//   node silnik/eksport.mjs filmy/<nazwa> --tylko-dzwiek [--vert]  → wynik/<nazwa>[-pion]-dzwiek.wav (miks do odtwarzacza)
 //   node silnik/eksport.mjs filmy/<nazwa> --wersja <nazwa>/v2   → render starej wersji z taga (tymczasowy git worktree)
 //   --fps 60 · --blur 8 · --ss 3 · --crf 12 · --rownolegle 3 (osobne procesy Chromium) · --out plik.mp4
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { openFilm, filmDir, closeServer, ROOT, plik } from './przegladarka.mjs';
 
 const argv = process.argv.slice(2);
@@ -95,6 +97,21 @@ if (STILLS) {
   done();
 }
 
+/* ---------- sam dźwięk (odtwarzacz): pamięć po treści ---------- */
+// Miks dla odtwarzacza liczy się od nowa tylko wtedy, gdy zmieniło się to, co słychać (czasy, tony, klipy lektora, kod
+// miksu) — zmiana samego obrazu w film.js zostawia gotowy plik. Klucz: skrót tych danych w pliku .json obok .wav.
+const SOUND_OUT = path.join(OUT_DIR, `${NAME}${VERT ? '-pion' : ''}-dzwiek.wav`), SOUND_META = SOUND_OUT.replace(/\.wav$/, '.json');
+const SOUND_KEY = createHash('sha1').update(JSON.stringify([FILM.dur, FILM.ticks, FILM.piks, FILM.tones,
+  (FILM.voice ?? []).map((v) => [v.file, v.at, v.start, v.from, v.to, fs.statSync(plik(v.file) ?? '.').mtimeMs]),
+  fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')])).digest('hex');
+if (flag('--tylko-dzwiek') && fs.existsSync(SOUND_OUT) && fs.existsSync(SOUND_META)
+  && JSON.parse(fs.readFileSync(SOUND_META, 'utf8')).key === SOUND_KEY) {
+  const now = new Date();
+  fs.utimesSync(SOUND_OUT, now, now);                       // serwer porównuje daty plików — dźwięk jest aktualny
+  console.log(`${path.relative(process.cwd(), SOUND_OUT)} · ${FILM.dur.toFixed(1)} s (bez zmian w dźwięku)`);
+  done();
+}
+
 /* ---------- dźwięk: tony z film.js (tykanie, pik monitora) + ściszanie pod lektorem ---------- */
 
 const RATE = 48000;
@@ -159,19 +176,52 @@ pcm.forEach((v, i) => {
 const wavPath = path.join(os.tmpdir(), `film-${process.pid}.wav`);
 fs.writeFileSync(wavPath, wav);
 
-// lektor: każdy plik przesunięty o v.at; wszystko razem do −16 LUFS (szczyt −1,5 dBTP).
-// `first` = numer wejścia ffmpeg z tłem (po nim pliki lektora).
+// Lektor: każdy klip przesunięty o v.at, potem wspólna szyna lektora: filtr dolnozaporowy (dudnienie), de-esser (głoski
+// syczące) i łagodna kompresja. Bez niej szczyty mowy dobijały do ogranicznika normalizacji — dynamiczny loudnorm
+// przycinał je co chwilę i lektor brzmiał ostro, syczał. Całość do −16 LUFS: pomiar, potem stałe wzmocnienie
+// (bez pompowania głośności) i ogranicznik tylko na pojedynczych szczytach. Wynik: gotowa ścieżka WAV, którą eksport dokłada do obrazu.
 const voiceIn = VOICE.flatMap((v) => {
   const f = plik(v.file);
   if (!f) throw new Error(`brak pliku lektora ${v.file}`);
   return ['-i', f];
 });
 const afmt = `aformat=sample_rates=${RATE}:channel_layouts=stereo`;
-const audioGraph = (first) => [
-  `[${first}:a]${afmt}[bg]`,
-  ...VOICE.map((v, k) => { const ms = Math.max(0, Math.round(v.at * 1000)); return `[${k + first + 1}:a]adelay=${ms}|${ms},${afmt}[v${k}]`; }),
-  `[bg]${VOICE.map((_, k) => `[v${k}]`).join('')}amix=inputs=${VOICE.length + 1}:normalize=0:duration=first,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=${RATE}[aout]`,
-].join(';');
+// highshelf + lowpass: łagodniejsze „s”, „sz”, „cz” i schowane artefakty MP3 z syntezatora. Ogranicznik z wyprzedzeniem
+// (alimiter) ścina rzadkie szczyty mowy 11,5 dB nad zmierzoną głośnością lektora, więc ogranicznik na końcu miksu prawie
+// nie pracuje na głosie; próg zależy od nagrania, więc liczy go osobny pomiar.
+const VOICE_FX = 'highpass=f=70,highshelf=f=6000:g=-3,lowpass=f=11500,deesser=i=0.7:m=0.6:f=0.5,'
+  + 'acompressor=threshold=0.1:ratio=3:attack=5:release=120:knee=6';
+const voiceBus = (fx) => [
+  ...VOICE.map((v, k) => { const ms = Math.max(0, Math.round(v.at * 1000)); return `[${k + 1}:a]adelay=${ms}|${ms},${afmt}[v${k}]`; }),
+  `${VOICE.map((_, k) => `[v${k}]`).join('')}amix=inputs=${VOICE.length}:normalize=0,${fx}[vo]`,
+];
+const LN = 'loudnorm=I=-16:TP=-1.5:LRA=11';
+const ffInfo = (args) => {
+  const r = spawnSync('ffmpeg', ['-y', '-hide_banner', '-nostats', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
+  if (r.status !== 0) throw new Error(`ffmpeg: ${r.stderr.split('\n').slice(-5).join(' ')}`);
+  return r.stderr;
+};
+const measure = (graph, out) => {
+  const err = ffInfo(['-i', wavPath, ...voiceIn, '-filter_complex', `${graph};[${out}]${LN}:print_format=json[m]`, '-map', '[m]', '-f', 'null', '-']);
+  return JSON.parse(err.slice(err.lastIndexOf('{'), err.lastIndexOf('}') + 1));
+};
+let MIX = `[0:a]${afmt}[bg];[bg]anull[mix]`;
+if (VOICE.length) {
+  const iv = Number(measure(voiceBus(VOICE_FX).join(';'), 'vo').input_i);
+  const limit = Math.min(1, Math.max(0.0625, 10 ** ((iv + 11.5) / 20)));
+  MIX = [`[0:a]${afmt}[bg]`, ...voiceBus(`${VOICE_FX},alimiter=limit=${limit.toFixed(4)}:attack=5:release=60:level=false`),
+    '[bg][vo]amix=inputs=2:normalize=0:duration=first[mix]'].join(';');
+}
+const mixPath = path.join(os.tmpdir(), `film-${process.pid}-miks.wav`);
+{
+  // stałe wzmocnienie do −16 LUFS i ogranicznik z wyprzedzeniem na końcu (−2 dBFS, szczyt prawdziwy ok. −1,5 dBTP):
+  // ścina tylko pojedyncze krótkie szczyty (piki tła, rzadkie głoski) zamiast zmieniać głośność w czasie jak loudnorm
+  const m = measure(MIX, 'mix'), gain = -16 - Number(m.input_i);
+  if (process.env.MIKS_DEBUG) console.log('pomiar miksu:', m.input_i, 'LUFS, szczyt', m.input_tp, 'dBTP, wzmocnienie', gain.toFixed(2), 'dB');
+  const norm = Number.isFinite(gain) ? `volume=${gain.toFixed(2)}dB,alimiter=limit=0.79:attack=3:release=50:level=false` : 'anull';
+  ffInfo(['-i', wavPath, ...voiceIn, '-filter_complex', `${MIX};[mix]${norm},aresample=${RATE}[aout]`, '-map', '[aout]', '-c:a', 'pcm_s16le', mixPath]);
+}
+fs.rmSync(wavPath, { force: true });
 const ffmpeg = (args) => new Promise((ok, fail) => {
   const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', ...args], { stdio: ['pipe', 'inherit', 'inherit'] });
   ff.on('close', (code) => (code === 0 ? ok() : fail(new Error(`ffmpeg: kod ${code}`))));
@@ -179,10 +229,9 @@ const ffmpeg = (args) => new Promise((ok, fail) => {
 });
 
 if (flag('--tylko-dzwiek')) {
-  const out = path.join(OUT_DIR, `${NAME}-dzwiek.wav`);
-  await ffmpeg(['-i', wavPath, ...voiceIn, '-filter_complex', audioGraph(0), '-map', '[aout]', out]);
-  fs.rmSync(wavPath, { force: true });
-  console.log(`${path.relative(process.cwd(), out)} · ${FILM.dur.toFixed(1)} s`);
+  fs.copyFileSync(mixPath, SOUND_OUT); fs.rmSync(mixPath, { force: true });
+  fs.writeFileSync(SOUND_META, JSON.stringify({ key: SOUND_KEY }));
+  console.log(`${path.relative(process.cwd(), SOUND_OUT)} · ${FILM.dur.toFixed(1)} s`);
   done();
 }
 
@@ -194,9 +243,9 @@ if (SZKIC) {
   const raw = path.join(os.tmpdir(), `film-${process.pid}-szkic.mp4`);
   const b64 = await pages[0].evaluate(`window.szkic(${FPS})`);
   fs.writeFileSync(raw, Buffer.from(b64, 'base64'));
-  await ffmpeg(['-i', raw, '-i', wavPath, ...voiceIn, '-filter_complex', audioGraph(1), '-map', '0:v', '-map', '[aout]',
+  await ffmpeg(['-i', raw, '-i', mixPath, '-map', '0:v', '-map', '1:a',
     '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-shortest', OUT]);
-  fs.rmSync(raw, { force: true }); fs.rmSync(wavPath, { force: true });
+  fs.rmSync(raw, { force: true }); fs.rmSync(mixPath, { force: true });
   console.log(`${path.relative(process.cwd(), OUT)} · szkic ${FPS} kl./s · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   done();
 }
@@ -205,8 +254,7 @@ if (SZKIC) {
 
 for (let k = 1; k < PAR; k++) pages.push(await openFilm({ film: FILM_REL, v: VERT, ss: SS, sz: flag('--sz') }));
 const enc = ffmpeg(['-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'png', '-i', '-',
-  '-i', wavPath, ...voiceIn,
-  '-filter_complex', audioGraph(1), '-map', '0:v', '-map', '[aout]',
+  '-i', mixPath, '-map', '0:v', '-map', '1:a',
   '-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-crf', CRF, '-preset', 'slow', '-tune', 'animation',
   '-c:a', 'aac', '-b:a', '192k', '-ar', String(RATE),
   '-movflags', '+faststart', '-shortest', OUT]);
@@ -235,6 +283,6 @@ while (written < N) {
 await Promise.all(workers);
 stdin.end();
 await enc;
-fs.rmSync(wavPath, { force: true });
+fs.rmSync(mixPath, { force: true });
 console.log(`\n${path.relative(process.cwd(), OUT)} · ${N} klatek, ${FILM.dur.toFixed(1)} s, ${FPS} kl./s, ×${PAR} · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 done();

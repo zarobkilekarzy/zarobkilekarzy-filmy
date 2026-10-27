@@ -4,6 +4,8 @@
 /* ---------- czas ujęć ---------- */
 // Ujęcie trwa co najmniej: wejście lektora + mowa (z pauzami między klipami) + oddech + czas na
 // doczytanie kadru (hold).
+// pion może pominąć ujęcia (`pion: false`) — krótsza wersja na TikToka i Shorts z tego samego kodu
+if (VERT) for (let i = SHOTS.length - 1; i >= 0; i--) if (SHOTS[i].pion === false) SHOTS.splice(i, 1);
 SHOTS.forEach((s, i) => { IDX[s.id] = i; });
 // kwestia z teksty.js, a gdy jej nie ma — domyślna kwestia ujęcia (`vo`, np. nazwa marki na planszy końcówki)
 PARTS = SHOTS.map((s) => { const l = window.TEKSTY[s.id] ?? s.vo; return Array.isArray(l) ? l : l ? [l] : []; });
@@ -43,6 +45,8 @@ if (VERT) document.getElementById('wrap').style.maxWidth = 'min(100vw, calc((100
 
 /* ---------- odtwarzacz ---------- */
 
+const ZOOM = typeof NAJAZD === 'number' ? NAJAZD : 0.025;   // przybliżenie na ujęcie (0,025 = 2,5%)
+if (VERT) SAFE.k /= 1 + ZOOM;   // pion: pole kadru po pełnym najeździe nadal w strefie bezpiecznej (x 192–888)
 function render(t) {
   render.t = t;
   const s = shotAt(t);
@@ -51,11 +55,12 @@ function render(t) {
   ctx.setTransform(SS, 0, 0, SS, 0, 0);
   ctx.globalAlpha = 1;
   ctx.fillStyle = th.bg; ctx.fillRect(0, 0, W, H);
-  // najazd kamery: w grupie ujęć o tym samym układzie (`group`) liczony przez całą grupę — bez skoku na cięciu
+  // najazd kamery: w grupie ujęć o tym samym układzie (`group`) liczony przez całą grupę — bez skoku na cięciu;
+  // siła: NAJAZD w film.js (0 = kamera stoi; powolne skalowanie daje pełzanie pikseli na statycznych kadrach)
   const span = s.group ? SHOTS.filter((x) => x.group === s.group) : [s];
-  const k = 1 + 0.025 * ((t - span[0].t0) / (span.at(-1).t1 - span[0].t0));
+  const k = 1 + ZOOM * ((t - span[0].t0) / (span.at(-1).t1 - span[0].t0));
   ctx.save();
-  if (VERT) { ctx.translate(SAFE.x, SAFE.y); ctx.scale(SAFE.k, SAFE.k); ctx.translate(-SAFE.x, -SAFE.from); }
+  if (VERT) { ctx.translate(W / 2, SAFE.y); ctx.scale(SAFE.k, SAFE.k); ctx.translate(-W / 2, -SAFE.from); }   // środek pola = środek ekranu
   ctx.translate(W / 2, H / 2); ctx.scale(k, k); ctx.translate(-W / 2, -H / 2);
   INSPECT_PART = s.bare ? 'plansza' : 'kadr';
   if (!VERT) s.draw(lt, s.d);
@@ -244,7 +249,7 @@ window.captureBlur = (t, exposure, n) => png(blurFrame(t, exposure, n));
 window.FILM = { dur: DUR, ticks: TICKS, piks: PIKS, tones: TONES, voice: VOICE.map(({ _w, ...v }) => v), lines: LINES, vert: VERT,
   shots: SHOTS.map((s) => ({ id: s.id, n: s.n, t0: s.t0, t1: s.t1, src: s.src ?? '', theme: typeof s.theme === 'string' ? s.theme : 'zmienny', bare: !!s.bare })),
   // nazwane znaczniki na osi filmu: czas bez poprawki z odtwarzacza (`base`) i z poprawką (`t`)
-  znaczniki: Object.entries(typeof ZNACZNIKI === 'undefined' ? {} : ZNACZNIKI).map(([name, z]) => {
+  znaczniki: Object.entries(typeof ZNACZNIKI === 'undefined' ? {} : ZNACZNIKI).filter(([, z]) => IDX[z.ujecie] != null).map(([name, z]) => {
     const t0 = SHOTS[IDX[z.ujecie]].t0;
     return { name, ujecie: z.ujecie, fraza: z.fraza ?? null, base: t0 + zAt(z), t: t0 + Z(name) };
   }) };

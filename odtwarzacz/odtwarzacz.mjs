@@ -20,6 +20,17 @@ const ICON = {
   next: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M10 1.5h2v11h-2zM2 1.5v11L9.5 7z" fill="currentColor"/></svg>',
 };
 
+// Wybrane opcje są w adresie (?film=…&v=1&tempo=1.5…): odświeżenie strony i skopiowany link otwierają odtwarzacz
+// tak samo. W adresie tylko wartości inne niż domyślne; czas (#t=) zostaje w kotwicy.
+const FILTERS = { wszystkie: '', zrobione: 'zrobiona' };          // domyślny filtr uwag: otwarte
+function saveOpts() {
+  const o = { v: S.vert && 1, sz: S.sz && 1, kadr: S.src === 'mp4' && 'mp4', plik: S.src === 'mp4' && $('mp4').value.split('/').at(-1),
+    tempo: S.rate !== 1 && S.rate, petla: S.loop && 1, os: Number($('zoom').value), napisy: S.subs.lang, lektor: S.tts && 1,
+    uwagi: Object.keys(FILTERS).find((k) => FILTERS[k] === $('filter').value) };
+  const qs = Object.entries(o).filter(([, x]) => x).map(([k, x]) => `&${k}=${encodeURIComponent(x)}`).join('');
+  history.replaceState(null, '', `?film=${encodeURIComponent(FILM).replace(/%2F/g, '/')}${qs}${location.hash}`);
+}
+
 const msg = (s = '') => { $('msg').textContent = s; };
 const fmtT = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 const round3 = (x) => Math.round(x * 1000) / 1000;
@@ -59,7 +70,27 @@ function drawFrame(t) {
 
 // Film z archiwum (własny kod w proto/): ta sama strona prototypu, bez jej pasków; ujęcia z window.SHOTS.
 const ARCHIVE_CSS = '.bar, #vo { display: none !important; } #wrap { max-width: none !important; } html, body { background: transparent !important; overflow: hidden; }';
+/* ---------- ekran ładowania: interfejs zablokowany, dopóki film i dźwięk nie są gotowe ---------- */
+let busyTimer = null;
+function busy(text, sub = '') {
+  clearInterval(busyTimer);
+  const el = $('busy');
+  if (!text) { el.hidden = true; return; }
+  el.hidden = false; el.classList.remove('err'); $('busy-retry').hidden = true;
+  $('busy-text').textContent = text; $('busy-sub').textContent = sub;
+  const t0 = Date.now(), tick = () => { $('busy-time').textContent = `${Math.floor((Date.now() - t0) / 1000)} s`; };
+  tick(); busyTimer = setInterval(tick, 500);
+}
+function busyError(text) {
+  clearInterval(busyTimer);
+  $('busy').hidden = false; $('busy').classList.add('err'); $('busy-retry').hidden = false;
+  $('busy-text').textContent = text; $('busy-time').textContent = '';
+  $('busy-sub').textContent = 'Popraw film i kliknij „spróbuj ponownie” (szczegóły w konsoli serwera).';
+}
+$('busy-retry').onclick = () => location.reload();
+
 async function loadLive() {
+  busy('Ładuję film…');
   fitFrame();
   iframe?.remove(); video?.remove(); video = null;
   iframe = document.createElement('iframe');
@@ -69,7 +100,7 @@ async function loadLive() {
   for (let i = 0; i < 300; i++) {
     await new Promise((r) => setTimeout(r, 50));
     const w = frameWin();
-    if (w?.FILM_ERROR) { msg(`Film: ${w.FILM_ERROR}`); return false; }
+    if (w?.FILM_ERROR) { busyError(`Film: ${w.FILM_ERROR}`); return false; }
     if (w?.FILM_READY) {
       S.film = w.FILM;
       if (S.archive) {
@@ -81,7 +112,7 @@ async function loadLive() {
       drawFrame(S.t); return true;
     }
   }
-  msg('Film się nie załadował.'); return false;
+  busyError('Film się nie załadował.'); return false;
 }
 
 /* ---------- miniatury ujęć i pasek przewijania ---------- */
@@ -195,15 +226,19 @@ async function buildWave() {
     iframe?.remove(); iframe = null;
     video?.remove();                                   // poprzedni plik nie może zostać pod nowym
     video = document.createElement('video');
+    busy('Wczytuję plik MP4…');
     video.src = $('mp4').value; video.playsInline = true;
     $('frame').prepend(video);
     opts = { media: video };
   } else {
-    msg('Przygotowuję dźwięk filmu…');
-    const r = await fetch(`/api/dzwiek?film=${encodeURIComponent(FILM)}`);
-    if (!r.ok) { msg(`Dźwięk: ${await r.text()}`); return; }
+    busy(`Przygotowuję dźwięk filmu${S.vert ? ' (pion)' : ''}…`, 'Liczy się od nowa tylko po zmianie dźwięku (czasy ujęć, lektor) — wtedy kilkanaście sekund.');
+    const r = await fetch(`/api/dzwiek?film=${encodeURIComponent(FILM)}${S.vert ? '&v=1' : ''}`);
+    if (!r.ok) {
+      const e = await r.text();
+      if (S.archive) { busy(null); msg(`Dźwięk: ${e}`); return; }      // film z archiwum da się oglądać bez dźwięku
+      busyError(`Dźwięk: ${e}`); return;
+    }
     opts = { url: (await r.json()).url };
-    msg();
   }
   ws = WaveSurfer.create({
     container: '#wave', height: 92, waveColor: '#56627A', progressColor: '#6E9BFF', cursorColor: '#FFFFFF', cursorWidth: 2,
@@ -211,7 +246,18 @@ async function buildWave() {
     plugins: [regions, TimelinePlugin.create({ container: '#timeline', height: 18, style: { color: '#8691A5', fontSize: '11px' } })],
   });
   // `ready` tylko raz: wavesurfer potrafi zgłosić go ponownie i cofnąć czas do starego S.t
-  ws.once('ready', () => { ws.setPlaybackRate(S.rate); ws.setTime(Math.min(S.t, ws.getDuration())); paintRegions(); });
+  ws.once('ready', () => {
+    // dźwięk innej długości niż film = inna wersja (np. stary serwer daje pionowi dźwięk 16:9) — lektor by się rozjechał
+    const gap = ws.getDuration() - (S.film?.dur ?? ws.getDuration());
+    if (S.src === 'live' && !S.archive && Math.abs(gap) > 0.5) {
+      busyError(`Dźwięk ma ${ws.getDuration().toFixed(1)} s, a film ${S.film.dur.toFixed(1)} s. Serwer jest pewnie starszy niż odtwarzacz — uruchom go ponownie.`);
+      return;
+    }
+    ws.setPlaybackRate(S.rate); ws.setTime(Math.min(S.t, ws.getDuration()));
+    if (Number($('zoom').value)) ws.zoom(Number($('zoom').value));
+    paintRegions(); busy(null);
+  });
+  ws.on('error', (e) => busyError(`Dźwięk: ${e?.message ?? e}`));
   ws.on('timeupdate', onTime);
   ws.on('seeking', onTime);
   // po przebudowie osi: scena ma znowu stałą wysokość; mierzenie w trakcie (bez fali) dawało za duży kadr
@@ -429,11 +475,14 @@ async function setSubs(lang) {
   if (lang && !S.subs.cues[lang]) S.subs.cues[lang] = S.subs.urls[lang] ? parseVtt(await (await fetch(S.subs.urls[lang], { cache: 'no-store' })).text()) : [];
   S.subs.lang = lang;
   $('subs').textContent = `napisy: ${lang ? lang.toUpperCase() : 'wył.'}`; toggle('subs', !!lang);
-  renderCaption();
+  renderCaption(); saveOpts();
 }
+// języki z plikiem VTT; PL także bez niego, gdy są kwestie bez nagrania (napis szacunkowy)
+const availSubs = () => LANGS.filter((l) => S.subs.urls[l] || (l === 'pl' && S.film?.lines?.some((x, n) => x && !recorded(n))));
 async function cycleSubs() {
+  if ($('subs').disabled) return;
   if (!S.subs.urls) await loadSubs();
-  const avail = LANGS.filter((l) => S.subs.urls[l] || (l === 'pl' && S.film?.lines?.some((x, n) => x && !recorded(n))));
+  const avail = availSubs();
   if (!avail.length) { msg('Brak napisów: film nie ma nagrania lektora z tekstem (FILM.voice).'); return; }
   const order = [null, ...avail], next = order[(order.indexOf(S.subs.lang) + 1) % order.length];
   const missing = LANGS.filter((l) => !S.subs.urls[l]);
@@ -454,7 +503,8 @@ function renderCaption() {
 async function reload() {
   const t = S.t;
   S.poprawki = await getJSON(`/${FILM}/znaczniki.json`, {});
-  if (S.src === 'live') await loadLive();
+  // po zmianie kodu mogły się zmienić czasy ujęć i dźwięk — fala od nowa (dźwięk z pamięci, gdy się nie zmienił)
+  if (S.src === 'live' && await loadLive()) await buildWave();
   S.t = t; paintRegions(); drawFrame(t);
   // napisy od nowa (zmieniony tekst lektora albo tłumaczenie)
   if (S.subs.urls) { const lang = S.subs.lang; await loadSubs(); await setSubs(S.subs.urls[lang] ? lang : null); }
@@ -464,42 +514,53 @@ $('play').onclick = () => ws?.playPause();
 // Format (16:9 / pion) wybierają tylko te przyciski — także w trybie MP4, gdzie decyduje o liście plików.
 async function setFormat(vert) {
   S.vert = vert; toggle('fmt-h', !vert); toggle('fmt-v', vert);
-  if (S.src === 'mp4') await showMp4(); else await loadLive();
+  // w pionie napisy rysuje silnik w kadrze (a czasy są inne niż w VTT z 16:9)
+  $('subs').disabled = vert; if (vert && S.subs.lang) await setSubs(null);
+  saveOpts();
+  if (S.src === 'mp4') await showMp4(); else if (await loadLive()) await buildWave();
 }
 $('fmt-h').onclick = () => setFormat(false);
 $('fmt-v').onclick = () => setFormat(true);
-$('sz').onclick = async () => { S.sz = !S.sz; toggle('sz', S.sz); if (S.src === 'live') await loadLive(); };
-$('rate').onchange = () => { S.rate = Number($('rate').value); ws?.setPlaybackRate(S.rate); $('rate').blur(); };
+$('sz').onclick = async () => { S.sz = !S.sz; toggle('sz', S.sz); saveOpts(); if (S.src === 'live') await loadLive(); };
+$('rate').onchange = () => { S.rate = Number($('rate').value); ws?.setPlaybackRate(S.rate); $('rate').blur(); saveOpts(); };
 $('prev').onclick = () => jump(-1);
 $('next').onclick = () => jump(1);
-$('tts').onclick = () => {
-  S.tts = !S.tts; toggle('tts', S.tts); $('tts').textContent = `lektor syntez.: ${S.tts ? 'wł.' : 'wył.'}`;
-  if (!S.tts) window.speechSynthesis?.cancel(); else if (ws?.isPlaying()) speak(shotAt(S.t)?.n);
-};
+function setTts(on) {
+  S.tts = on; toggle('tts', on); $('tts').textContent = `lektor syntez.: ${on ? 'wł.' : 'wył.'}`;
+  if (!on) window.speechSynthesis?.cancel(); else if (ws?.isPlaying()) speak(shotAt(S.t)?.n);
+}
+$('tts').onclick = () => { setTts(!S.tts); saveOpts(); };
 $('keys').onclick = () => { $('help').hidden = !$('help').hidden; toggle('keys', !$('help').hidden); };
-$('loop').onclick = () => { S.loop = !S.loop; toggle('loop', S.loop); };
+$('loop').onclick = () => { S.loop = !S.loop; toggle('loop', S.loop); saveOpts(); };
 $('reload').onclick = reload;
 $('pin').onclick = () => setPin(!S.pinArmed);
-$('filter').onchange = () => { paintRegions(); renderList(); renderPins(); };
+$('filter').onchange = () => { paintRegions(); renderList(); renderPins(); saveOpts(); };
 $('zoom').oninput = () => ws?.zoom(Number($('zoom').value));
+$('zoom').onchange = saveOpts;                     // po puszczeniu suwaka: Safari nie pozwala na setki replaceState
 $('form-save').onclick = saveForm;
 $('form-cancel').onclick = closeForm;
 $('unsel').onclick = clearSelection;
 $('deluw').onclick = () => S.sel?.uwaga && deleteUwaga(S.sel.uwaga);
 $('subs').onclick = cycleSubs;
-$('src-live').onclick = async () => { S.src = 'live'; toggle('src-live', true); toggle('src-mp4', false); $('mp4').hidden = true; await loadLive(); await buildWave(); };
+$('src-live').onclick = async () => {
+  S.src = 'live'; toggle('src-live', true); toggle('src-mp4', false); $('mp4').hidden = true; saveOpts();
+  await loadLive(); await buildWave();
+};
 const isVertFile = (f) => /-pion|9x16/.test(f.split('/').at(-1));
-async function showMp4() {
+/** Kadr z pliku MP4 (`want` = nazwa pliku z adresu; bez niej najnowszy w danym formacie). */
+async function showMp4(want) {
   const files = (await getJSON(`/api/pliki?film=${encodeURIComponent(FILM)}`, [])).filter((f) => isVertFile(f) === S.vert);
   if (!files.length) { msg(`W ${FILM}/wynik/ nie ma pliku MP4 w formacie ${S.vert ? 'pion' : '16:9'} — najpierw eksport (np. --szkic${S.vert ? ' --vert' : ''}).`); return false; }
   msg();
   $('mp4').innerHTML = files.map((f) => `<option value="${f}">${f.split('/').at(-1)}</option>`).join('');
-  $('mp4').hidden = false; S.src = 'mp4'; toggle('src-live', false); toggle('src-mp4', true);
+  const pick = files.find((f) => f.split('/').at(-1) === want);
+  if (pick) $('mp4').value = pick;
+  $('mp4').hidden = false; S.src = 'mp4'; toggle('src-live', false); toggle('src-mp4', true); saveOpts();
   await buildWave();
   return true;
 }
-$('src-mp4').onclick = showMp4;
-$('mp4').onchange = () => buildWave();
+$('src-mp4').onclick = () => showMp4();
+$('mp4').onchange = () => { saveOpts(); buildWave(); };
 document.addEventListener('keydown', (e) => {
   if (e.target.matches?.('textarea, input, select')) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveForm();
@@ -525,12 +586,29 @@ toggle('fmt-h', !S.vert); toggle('fmt-v', S.vert); toggle('sz', S.sz);
 $('play').innerHTML = ICON.play; $('prev').innerHTML = ICON.prev; $('next').innerHTML = ICON.next;
 fitFrame();
 setPin(false);
-S.wersja = (await getJSON(`/api/wersja?film=${encodeURIComponent(FILM)}`, {})).wersja ?? '—';
+// opcje z adresu (zapisuje je saveOpts); format i strefy są już w S
+{
+  const rate = q.get('tempo');
+  if ([...$('rate').options].some((o) => o.value === rate)) { $('rate').value = rate; S.rate = Number(rate); }
+  S.loop = q.get('petla') === '1'; toggle('loop', S.loop);
+  $('zoom').value = Number(q.get('os')) || 0;
+  if (Object.hasOwn(FILTERS, q.get('uwagi') ?? '')) $('filter').value = FILTERS[q.get('uwagi')];
+  if (q.get('lektor') === '1') setTts(true);
+}
+S.wersja =(await getJSON(`/api/wersja?film=${encodeURIComponent(FILM)}`, {})).wersja ?? '—';
 $('wersja').textContent = S.wersja;
 S.archive = !(await fetch(`/${FILM}/film.js`, { method: 'HEAD' })).ok && (await fetch(`/${FILM}/proto/film.js`, { method: 'HEAD' })).ok;
 if (S.archive) $('wersja').textContent += ' · archiwum (własny kod, bez znaczników)';
 S.uwagi = await getJSON(`/${FILM}/uwagi.json`, []);
 S.poprawki = await getJSON(`/${FILM}/znaczniki.json`, {});
-if (await loadLive()) { await buildWave(); renderList(); }
+$('subs').disabled = S.vert;
+if (await loadLive()) {
+  // kadr z pliku MP4, gdy adres go wskazuje i plik jest; inaczej na żywo
+  if (!(q.get('kadr') === 'mp4' && await showMp4(q.get('plik')))) await buildWave();
+  renderList();
+  const lang = q.get('napisy');
+  if (lang && !S.vert) { await loadSubs(); if (availSubs().includes(lang)) await setSubs(lang); }
+}
+saveOpts();                                        // adres bez wartości, których nie dało się przywrócić
 window.ODTWARZACZ = S;
 Object.defineProperty(S, "ws", { get: () => ws });

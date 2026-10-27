@@ -11,8 +11,10 @@ const W = VERT ? 1080 : 1920, H = VERT ? 1920 : 1080, M = VERT ? 70 : 120;
 const LOGO_Y = VERT ? 252 : 62, FOOT_Y = 1024, CAP_Y = 1306;
 // Pion: strefy, których nie zasłania interfejs TikToka i YouTube Shorts (pasek u góry ok. 240–290 px,
 // opis i nazwa kanału na dole od ok. 1250 px, kolumna przycisków z prawej ok. 180 px). Kadry z `drawV`
-// są projektowane na polu 70–1010 × 360–1420 i wpisywane w pole bezpieczne SAFE (skala 0,77).
-const SAFE = { x: 70, y: 430, from: 360, k: 0.77, right: 900 };
+// są projektowane na polu 70–1010 × 360–1420 i wpisywane w pole bezpieczne SAFE (skala 0,74) wyśrodkowane na ekranie:
+// środek pola = środek ekranu (x 540), więc pole zajmuje x 192–888 — prawa krawędź kończy się przed kolumną przycisków.
+// Z najazdem kamery skala jest mniejsza (silnik-start.js), żeby pole po pełnym przybliżeniu nadal mieściło się w 192–888.
+const SAFE = { y: 430, from: 360, k: 0.74, right: 900 };
 
 // Motywy kadrów (noc / dzień / kobalt), linia EKG znaku i napisy marki — silnik/marka.mjs.
 const TH = window.MARKA.TH;
@@ -175,11 +177,13 @@ function mark(x, y, s, k = 1) {
   ECG.forEach(([u, v], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x + (u / 24) * s, y + (v / 24) * s));
   ctx.stroke(); ctx.restore();
 }
+// pion: logo i krótkie źródło wyrównane do lewej krawędzi wyśrodkowanego pola kadru (nie do brzegu ekranu)
+const lx = () => (VERT ? W / 2 + (M - W / 2) * SAFE.k : M);
 function logo() {
-  mark(M, LOGO_Y, 40);
+  mark(lx(), LOGO_Y, 40);
   const w = measure(NAZWA, 34, 500);
-  txt(NAZWA, M + 54, LOGO_Y + 32, { size: 34, weight: 500 });
-  txt(NAZWA_PRZYROSTEK, M + 54 + w, LOGO_Y + 32, { size: 34, weight: 500, color: th.wordDim });
+  txt(NAZWA, lx() + 54, LOGO_Y + 32, { size: 34, weight: 500 });
+  txt(NAZWA_PRZYROSTEK, lx() + 54 + w, LOGO_Y + 32, { size: 34, weight: 500, color: th.wordDim });
 }
 // Źródła: <film>/zrodla.json — klucz ujęcia (`src: 'klucz'`) → pełna stopka 16:9 i krótka linia pionu.
 // Z tego samego pliku biorą się napisy ze źródłami na stronę i kontrola liczb (silnik/kontrola.mjs).
@@ -210,10 +214,10 @@ function sourceV(s) {
   let line = '';
   for (const w of words) {
     const next = line ? `${line} ${w}` : w;
-    if (ctx.measureText(next).width > SAFE.right - M && line) { lines.push(line); line = w; } else line = next;
+    if (ctx.measureText(next).width > SAFE.right - lx() && line) { lines.push(line); line = w; } else line = next;
   }
   lines.push(line); ctx.restore();
-  lines.slice(0, 2).forEach((l, i) => txt(l, M, LOGO_Y + 74 + i * 28, { size: 22, weight: 500, font: F.mono, track: 0.04, color: th.muted, max: 9999 }));
+  lines.slice(0, 2).forEach((l, i) => txt(l, lx(), LOGO_Y + 74 + i * 28, { size: 22, weight: 500, font: F.mono, track: 0.04, color: th.muted, max: 9999 }));
 }
 /** Przejście na początku aktu: linia EKG ze znaku przelatuje przez cały kadr. */
 function zip(lt) {

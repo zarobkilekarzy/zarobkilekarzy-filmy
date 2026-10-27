@@ -35,7 +35,7 @@ const SHOTS = [
       rise('Pytanie, które otwiera film?', M, 790, 84, lt, 0.6, { weight: 400 });
     },
     drawV(lt) {
-      mono('Etykieta · kontekst liczby', M, 400, lt, -1, { size: 30 });
+      mono('Etykieta · kontekst liczby', M, 400, lt, -1, { size: 32 });
       const size = fitSize('123 000 zł', 300, 600);
       txt('123 000 zł', M, 450 + size * 0.78, { size, weight: 600, max: 9999 });
       rise('Pytanie, które', M, 900, 150, lt, 0.6, { weight: 400 });

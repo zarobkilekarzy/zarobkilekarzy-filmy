@@ -91,7 +91,12 @@ Każde ujęcie w `SHOTS` to obiekt:
 | `group` | Ujęcia o tym samym układzie: najazd kamery idzie ciągle przez całą grupę. |
 | `bare`, `noCap` | Bez logo i stopki (plansza) · bez napisów lektora w pionie (gdy kadr mówi to samo). |
 | `sound(d)` | Dźwięk przypięty do ujęcia: `{ ticks, piks, tones }` z czasami od cięcia (niżej, „Dźwięk”). |
+| `pion: false` | Ujęcie tylko w 16:9 — pion je pomija (krótsza wersja na TikToka i Shorts); `sound()` sprawdza wtedy `IDX.id != null`. |
 | `vo` | Domyślna kwestia lektora, gdy `teksty.js` nie ma wpisu pod `id` ujęcia (np. nazwa marki na planszy końcówki). |
+
+Kamera w każdym ujęciu powoli się przybliża (2,5%; w grupie — przez całą grupę). `const NAJAZD = 0;` w `film.js`
+wyłącza najazd (kamera stoi), inna liczba zmienia jego siłę. Przy statycznych kadrach powolne skalowanie daje pełzanie
+pikseli — wtedy lepiej `0`.
 
 Kadr rysuje się od zera w każdej klatce i zależy tylko od czasu — dzięki temu podgląd, klatka kontrolna i film są
 identyczne, a eksport może renderować klatki równolegle.
@@ -195,6 +200,12 @@ bez nagrania głosem systemu — do wyczucia tempa.
   `Esc` usuwa zaznaczenie, `Delete` — klikniętą uwagę, `L` zapętla zaznaczony fragment.
 - **Napisy** na kadrze: `C` przełącza wył. → PL → EN → CS. Kwestie bez nagrania lektora: napis szacunkowy (kursywa).
 - Klawisze: spacja, `←` `→` klatka, `⇧←` `⇧→` sekunda, `[` `]` ujęcie, `R` przeładowanie filmu, `?` lista skrótów.
+- **Opcje w adresie**: format, strefy, kadr (na żywo / MP4 z nazwą pliku), tempo, pętla, powiększenie osi, napisy,
+  lektor syntez., filtr uwag — np. `?film=filmy/<nazwa>&v=1&sz=1&tempo=1.5`. Odświeżenie strony i skopiowany link
+  otwierają odtwarzacz tak samo.
+- Dopóki film i dźwięk się przygotowują, interfejs zasłania ekran ładowania. Dźwięk innej długości niż film (np. serwer
+  uruchomiony przed aktualizacją generatora podaje pionowi dźwięk 16:9) blokuje odtwarzacz z komunikatem — uruchom
+  serwer ponownie.
 
 ## Napisy
 

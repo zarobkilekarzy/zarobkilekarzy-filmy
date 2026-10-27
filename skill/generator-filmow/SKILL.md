@@ -27,6 +27,14 @@ ostatnia linia mówi, skąd generator bierze filmy. Ścieżki filmów podajesz w
 Jeśli projekt ma własne zasady (`AGENTS.md`, `CLAUDE.md`, `kontrola-reczna.md`, README z procesem) — przeczytaj je;
 mają pierwszeństwo przed tym plikiem. Opis generatora i wszystkich funkcji do rysowania: `G/README.md`.
 
+## Pracujemy w odtwarzaczu — MP4 tylko na żądanie
+
+Człowiek ogląda film na żywo w odtwarzaczu (`node G/silnik/serwer.mjs` → `/odtwarzacz/?film=filmy/<nazwa>`): kadr
+rysuje silnik, zmiana w `film.js` jest widoczna po przeładowaniu (`R`), dźwięk liczy się sam. **Po zmianie nie
+eksportuj MP4** (`--szkic` ani pełnego) — sprawdź ją klatkami kontrolnymi (PNG) i powiedz człowiekowi, gdzie ma
+spojrzeć w odtwarzaczu. MP4 renderujesz tylko wtedy, gdy człowiek o to poprosi (np. „wyrenderuj do zatwierdzenia”,
+„daj plik na X”). Szkic MP4 przez komunikator to strata czasu i miejsca: odtwarzacz pokazuje to samo od razu.
+
 ## Kolejność pracy
 
 Każdy krok kończy się czymś, co człowiek może ocenić. Nie przeskakuj do kodu przed akceptacją scenariusza

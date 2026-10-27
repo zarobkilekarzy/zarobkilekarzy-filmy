@@ -40,7 +40,7 @@ kadru (kontrola: > 15 zn./s) → większy `hold` albo krótszy tekst w kadrze.
 
 ## Pion (1080 × 1920)
 
-- `drawV` projektujesz na polu **70–1010 × 360–1420**; silnik wpisuje je w strefę bezpieczną (skala 0,77), dodaje logo,
+- `drawV` projektujesz na polu **70–1010 × 360–1420**; silnik wpisuje je w strefę bezpieczną (skala 0,74, z najazdem kamery trochę mniej; środek pola = środek ekranu), dodaje logo,
   krótkie źródło pod logo i napisy lektora na dole. Nie rysuj nic poza tym polem.
 - Hierarchia jak w 16:9, ale większa: liczba na całą szerokość — `fitSize(tekst, max, waga)`, podpisy 60–110 px.
 - Treść kadru nie może być mniejsza niż ok. 22 px po skali (kontrola ostrzega).
@@ -65,6 +65,7 @@ kadru (kontrola: > 15 zn./s) → większy `hold` albo krótszy tekst w kadrze.
 | `group: 'nazwa'` | kolejne ujęcia na tym samym układzie (np. wykres): najazd kamery idzie ciągle, elementy już stojące nie wchodzą od nowa (`mono(…, lt, -1)`) |
 | `bare: true` | plansza bez logo i stopki (np. `endCard`) |
 | `hold`, `gap` | czas na doczytanie po kwestii, pauza między klipami kwestii |
+| `pion: false` | ujęcie tylko w 16:9 (krótszy pion); w `sound()` sprawdzaj `IDX.id != null` |
 | `sound(d)` | dźwięk przypięty do ujęcia (`ticks`, `piks`, `tones`, czasy od cięcia) — opis w README, „Dźwięk” |
 
 Koniec filmu: `...ending()` zamiast własnej planszy — wspólna końcówka marki (linia EKG zamarza w znak, plansza,

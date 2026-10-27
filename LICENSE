@@ -33,9 +33,3 @@ Creative Commons Uznanie autorstwa 4.0 (CC BY 4.0). Zob. plik LICENSE-CONTENT.md
 
 KOD OSÓB TRZECICH — front prototypu z https://mobywatel.ai/ w src/mobywatel/prototypy/baza/
 i baza-i18n/ — ma własnych autorów i własną licencję MIT. Zob. src/mobywatel/prototypy/baza/LICENSE.
-
----
-
-The MIT License above covers the code. It does not cover the zarobkilekarzy.pl brand
-(name, logo and "Puls" mark in silnik/marka.mjs, silnik/logo.svg and silnik/znak.svg).
-Fonts in silnik/fonty/ are licensed under the SIL Open Font License 1.1 (OFL-*.txt).

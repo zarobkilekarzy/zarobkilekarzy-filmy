@@ -180,6 +180,7 @@ node silnik/eksport.mjs filmy/<nazwa>                  # 16:9 → wynik/<nazwa>-
 node silnik/eksport.mjs filmy/<nazwa> --vert           # pion 1080×1920
 node silnik/eksport.mjs filmy/<nazwa> --szkic          # szybki podgląd: WebCodecs w przeglądarce, 30 kl./s
 node silnik/eksport.mjs filmy/<nazwa> --stills 0,5.2 [--vert] [--sz]   # klatki kontrolne PNG
+node narzedzia/ujecia.mjs filmy/<nazwa>                # czasy ujęć, chwile na klatki kontrolne, otwarte uwagi
 node silnik/eksport.mjs filmy/<nazwa> --tylko-dzwiek   # sam miks dźwięku
 node silnik/eksport.mjs filmy/<nazwa> --wersja <nazwa>/v2               # stara wersja z taga
 ```
@@ -226,6 +227,25 @@ Proporcje kadru są dobrane do serwisów: w 16:9 kluczowa liczba 250–300 px, e
 stopka ze źródłem; w pionie liczba na całą szerokość (`fitSize`), podpisy 60–110 px, napisy lektora 54 px. Pierwsza
 klatka jest okładką na X — kluczowa liczba powinna być widoczna od t = 0.
 
+## Skill dla agentów (Claude Code, Codex)
+
+`skill/generator-filmow/` to skill, który prowadzi agenta przez pracę nad filmem: scenariusz, kod ujęć, klatki
+kontrolne i ich oglądanie, pion, lektor (tylko za zgodą — kosztuje kredyty), uwagi z odtwarzacza i kontrolę.
+Agent pisze kod kadrów; liczby, źródła i tekst lektora zostają przy człowieku.
+
+Instalacja — wklej agentowi:
+
+```text
+Zainstaluj skill „generator-filmow” z repozytorium https://github.com/zarobkilekarzy/zarobkilekarzy-filmy
+1. Ustal, którym agentem jesteś, i wybierz katalog skilli osobistych: Claude Code — ~/.claude/skills/,
+   OpenAI Codex — ~/.agents/skills/ (starsze wersje: ~/.codex/skills/). Jeśli nie masz pewności, zapytaj mnie.
+2. Skopiuj cały folder skill/generator-filmow/ (SKILL.md i references/) tak, żeby powstała ścieżka
+   <katalog skilli>/generator-filmow/SKILL.md. Jeśli folder już istnieje — pokaż różnice i zapytaj, czy nadpisać.
+3. Potwierdź: podaj ścieżkę do SKILL.md i powiedz, czy trzeba Cię uruchomić ponownie.
+```
+
+Skill zakłada, że generator jest w bieżącym katalogu albo w podkatalogu `generator/` (submoduł) — sam to sprawdza.
+
 ## Struktura repo
 
 | Katalog | Co |
@@ -234,7 +254,8 @@ klatka jest okładką na X — kluczowa liczba powinna być widoczna od t = 0.
 | `odtwarzacz/` | Odtwarzacz montażowy. |
 | `szablon/` | Wzór filmu — kopiuje go `npm run nowy`. |
 | `filmy/` | Miejsce na filmy, jeśli trzymasz je w repo generatora. |
-| `narzedzia/` | `nowy.mjs` (film z szablonu), `sprawdz.mjs` (czy stanowisko ma wszystko). |
+| `narzedzia/` | `nowy.mjs` (film z szablonu), `ujecia.mjs` (czasy ujęć i otwarte uwagi), `sprawdz.mjs` (czy stanowisko ma wszystko). |
+| `skill/` | Skill dla agentów AI: praca nad filmem w tym generatorze. |
 
 ## Licencja
 

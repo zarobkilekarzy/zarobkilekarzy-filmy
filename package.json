@@ -15,6 +15,7 @@
   "scripts": {
     "sprawdz": "node narzedzia/sprawdz.mjs",
     "nowy": "node narzedzia/nowy.mjs",
+    "ujecia": "node narzedzia/ujecia.mjs",
     "serwer": "node silnik/serwer.mjs",
     "eksport": "node silnik/eksport.mjs",
     "lektor": "node silnik/lektor.mjs",

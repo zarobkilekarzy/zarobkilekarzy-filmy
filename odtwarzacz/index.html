@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Odtwarzacz montażowy</title>
+<link rel="stylesheet" href="/silnik/fonty.css">
+<style>
+  :root { --bg: #05080F; --panel: #0C1322; --panel2: #131B2E; --line: #2C3549; --ink: #EEF2F8; --muted: #8691A5; --blue: #2664EC; --blue2: #6E9BFF; --amber: #EDB54A; --ok: #4FC98F; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px Plex, system-ui, sans-serif; }
+  /* minmax(0, 1fr): żaden pasek (nawet bez zawijania) nie poszerza strony ponad okno */
+  body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: 100vh; overflow: hidden; }
+  header, main, footer { min-width: 0; }
+  button, select, textarea, input { font: 12px 'Plex Mono', monospace; color: var(--ink); background: var(--panel2); border: 1px solid var(--line); border-radius: 0; }
+  button { padding: 4px 9px; cursor: pointer; }
+  button.on { background: var(--blue); border-color: var(--blue); }
+  button:disabled { opacity: .4; cursor: default; }
+  .mono { font-family: 'Plex Mono', monospace; font-size: 12px; letter-spacing: .04em; }
+  .label { font: 500 11px 'Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+  header { display: flex; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font: 500 16px 'Inter Tight', sans-serif; letter-spacing: -.02em; margin: 0 12px 0 0; }
+  header .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+  #wersja { color: var(--muted); }
+  #time { min-width: 18ch; text-align: right; margin-left: auto; }
+
+  /* minmax(0, …): kolumna kadru nie może rosnąć od jego treści — inaczej kadr i kolumna przeliczają się nawzajem (mruganie) */
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+  #stage { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; }
+  /* rozmiar kadru liczy fitFrame() z wymiarów #stage (16:9 albo 9:16, z marginesem 16 px) */
+  #frame { position: relative; flex: none; background: #0A0F1C; overflow: hidden; }
+  #frame iframe, #frame video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  #pins { position: absolute; inset: 0; }
+  #pins.armed { cursor: crosshair; outline: 2px dashed var(--amber); outline-offset: 2px; }
+  /* napisy na kadrze (jak w odtwarzaczu serwisu): stopień liczony od szerokości kadru */
+  #frame { container-type: size; }
+  #caption { position: absolute; left: 0; right: 0; bottom: 7%; display: flex; justify-content: center; pointer-events: none; }
+  #caption span { max-width: 82%; text-align: center; white-space: pre-line; background: rgba(5, 8, 15, .78); color: #fff;
+    font: 500 2.3cqw/1.3 Plex, sans-serif; padding: .2em .5em; }
+  #frame.pion #caption { bottom: 30%; }
+  #frame.pion #caption span { font-size: 4.2cqw; }
+  .pin { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; background: var(--amber); color: #05080F; font: 600 11px 'Plex Mono', monospace; display: grid; place-items: center; }
+
+  aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+  aside .head { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  aside .head .label { margin-right: auto; }
+  #form { padding: 12px; border-bottom: 1px solid var(--line); display: none; gap: 8px; flex-direction: column; background: var(--panel2); }
+  #form.open { display: flex; }
+  #form textarea { width: 100%; min-height: 72px; resize: vertical; padding: 6px; font: 14px Plex, sans-serif; }
+  #form .row { display: flex; gap: 6px; align-items: center; }
+  #list { overflow: auto; flex: 1; }
+  .uwaga { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .uwaga:hover { background: var(--panel2); }
+  .uwaga.done { opacity: .5; }
+  .uwaga.current { box-shadow: inset 3px 0 0 var(--amber); }
+  .uwaga .meta { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+  .chip { font: 500 10px 'Plex Mono', monospace; letter-spacing: .06em; text-transform: uppercase; padding: 1px 5px; border: 1px solid var(--line); color: var(--muted); }
+  .uwaga .txt { white-space: pre-wrap; line-height: 1.4; }
+  .uwaga .act { display: flex; gap: 6px; margin-top: 6px; }
+  .uwaga .act button { padding: 2px 6px; font-size: 11px; }
+  .empty { padding: 16px 12px; color: var(--muted); line-height: 1.5; }
+
+  footer { border-top: 1px solid var(--line); padding: 8px 12px 10px; background: var(--panel); }
+  /* jedna linia bez zawijania: przyciski zaznaczenia pojawiają się i znikają, a wysokość paska (i kadru) ma zostać */
+  footer .bar { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: nowrap; white-space: nowrap; }
+  footer .bar .hint { color: var(--muted); margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #wave { position: relative; }
+  #wave ::part(region) { }
+  /* stała wysokość: pojawiający się komunikat nie może zmieniać rozmiaru kadru */
+  #msg { color: var(--amber); padding: 6px 0 0; height: 24px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  kbd { font: 11px 'Plex Mono', monospace; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Odtwarzacz</h1>
+  <span id="wersja" class="mono"></span>
+  <span class="sep"></span>
+  <button id="src-live" class="on" title="kadr rysowany na żywo przez silnik — zmiana w film.js widać po przeładowaniu">na żywo</button>
+  <button id="src-mp4" title="gotowy plik z wynik/">plik MP4</button>
+  <select id="mp4" hidden></select>
+  <span class="sep"></span>
+  <button id="fmt-h" class="on">16:9</button>
+  <button id="fmt-v">pion</button>
+  <button id="sz" title="strefy TikToka i Shorts (pion)">strefy</button>
+  <span class="sep"></span>
+  <button id="subs" title="napisy na kadrze: PL → EN → CS (C)">napisy: wył.</button>
+  <span class="sep"></span>
+  <button id="rate">tempo 1×</button>
+  <button id="loop" title="pętla zaznaczonego fragmentu (L)">pętla</button>
+  <button id="reload" title="przeładuj film (R)">przeładuj</button>
+  <span id="time" class="mono">0:00.00</span>
+</header>
+<main>
+  <div id="stage">
+    <div id="frame"><div id="caption"></div><div id="pins"></div></div>
+  </div>
+  <aside>
+    <div class="head">
+      <span class="label">Uwagi</span>
+      <select id="filter"><option value="otwarta">otwarte</option><option value="">wszystkie</option><option value="zrobiona">zrobione</option></select>
+      <button id="pin" title="pinezka w kadrze (P): kliknij miejsce na obrazie">pinezka</button>
+    </div>
+    <div id="form">
+      <div class="row"><span class="label" id="form-where"></span></div>
+      <textarea id="form-text" placeholder="Co poprawić w tym fragmencie?"></textarea>
+      <div class="row">
+        <select id="form-kind"><option>tekst</option><option>tempo</option><option>grafika</option><option>dźwięk</option><option>rzetelność</option><option>inne</option></select>
+        <span style="flex:1"></span>
+        <button id="form-cancel">anuluj</button>
+        <button id="form-save" class="on">zapisz <kbd>⌘↵</kbd></button>
+      </div>
+    </div>
+    <div id="list"></div>
+  </aside>
+</main>
+<footer>
+  <div class="bar">
+    <button id="play" title="spacja">▶</button>
+    <button id="unsel" hidden title="Esc">usuń zaznaczenie</button>
+    <button id="deluw" hidden title="Delete">usuń uwagę</button>
+    <span class="label">powiększenie</span>
+    <input id="zoom" type="range" min="0" max="300" value="0">
+    <span class="hint mono">przeciągnij po fali = nowa uwaga · przeciągnij <span style="color:var(--blue2)">znacznik</span> = nowy czas · <kbd>←</kbd><kbd>→</kbd> klatka · <kbd>⇧←</kbd><kbd>⇧→</kbd> sekunda · <kbd>N</kbd> uwaga tutaj · <kbd>Esc</kbd> bez zaznaczenia</span>
+  </div>
+  <div id="wave"></div>
+  <div id="timeline"></div>
+  <div id="msg"></div>
+</footer>
+<script type="module" src="odtwarzacz.mjs"></script>
+</body>
+</html>

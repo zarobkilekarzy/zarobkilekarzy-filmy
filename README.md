@@ -40,6 +40,20 @@ npm run serwer                          # http://127.0.0.1:4471/silnik/?film=fil
 | `scenariusz.md`, `wersje.md`, `kontrola.md` | Scenariusz i decyzje, historia wersji, lista kontrolna ostatniej wersji. |
 | `wynik/` | **Poza gitem**: MP4, klatki, napisy, pliki na stronę. |
 
+## Odtwarzacz montażowy
+
+`npm run serwer` → `http://127.0.0.1:4471/odtwarzacz/?film=filmy/<nazwa>` (także `archiwum/doba`, `szablon`).
+
+- Kadr **na żywo** (silnik rysuje klatkę — zmiana w `film.js` po przeładowaniu, `R`) albo **plik MP4** z `wynik/`;
+  format 16:9 / pion wybierają tylko przyciski (w trybie MP4 — lista plików w tym formacie), `strefy` = TikTok i Shorts.
+- Oś czasu (wavesurfer): ujęcia, fala dźwięku (miks robi serwer: `eksport --tylko-dzwiek`, w archiwum — dźwięk z pliku MP4),
+  nazwane znaczniki (przeciągnięcie = poprawka w `znaczniki.json`), uwagi.
+- **Uwagi**: przeciągnięcie po fali albo `N` → treść i rodzaj → `uwagi.json` (przypięte do ujęcia). `P` = pinezka w kadrze.
+  Zaznaczenie: `Esc` / „usuń zaznaczenie”; kliknięta uwaga — `Delete` / „usuń uwagę”. `L` = pętla zaznaczenia.
+- **Napisy** na kadrze: `C` / „napisy” przełącza wył. → PL → EN → CS (VTT z `silnik/napisy.mjs`; serwer generuje je,
+  gdy ich brak albo są starsze od tekstów).
+- Klawisze: spacja, `←` `→` klatka, `⇧←` `⇧→` sekunda.
+
 ## Nazwane znaczniki
 
 Pomysł z Motion Canvas („time events”). W `film.js`:

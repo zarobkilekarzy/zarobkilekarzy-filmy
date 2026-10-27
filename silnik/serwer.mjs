@@ -5,6 +5,7 @@
 //   node silnik/serwer.mjs [--port 4471]   → http://127.0.0.1:4471/silnik/?film=szablon · /odtwarzacz/?film=…
 // GET /api/wersja?film=… → { wersja } (git describe) · GET /api/pliki?film=… → MP4 z <film>/wynik/
 // GET /api/dzwiek?film=… → miks dźwięku dla odtwarzacza (eksport --tylko-dzwiek, gdy plik starszy od treści filmu)
+// GET /api/napisy?film=… → { pl, en, cs } adresy VTT (silnik/napisy.mjs, gdy brak plików albo są starsze od tekstów)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,12 +20,13 @@ const MIME = {
 };
 const WRITABLE = new Set(['uwagi.json', 'znaczniki.json']);
 
+const isFilm = (dir) => fs.existsSync(path.join(dir, 'film.js')) || fs.existsSync(path.join(dir, 'proto', 'film.js'));
 function inRoot(p) { const f = path.resolve(ROOT, `.${p}`); return f === ROOT || f.startsWith(ROOT + path.sep) ? f : null; }
 
 async function save(req, res, url) {
   const film = url.searchParams.get('film') ?? '', plik = url.searchParams.get('plik') ?? '';
   const dir = inRoot(`/${film}`);
-  if (!WRITABLE.has(plik) || !dir || !fs.existsSync(path.join(dir, 'film.js'))) { res.writeHead(400).end('zły film albo plik'); return; }
+  if (!WRITABLE.has(plik) || !dir || !isFilm(dir)) { res.writeHead(400).end('zły film albo plik'); return; }
   let body = '';
   for await (const chunk of req) body += chunk;
   const data = JSON.parse(body);                                   // błąd składni → 500, plik zostaje bez zmian
@@ -54,9 +56,24 @@ export function createServer() {
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ wersja: v }));
       return;
     }
+    if (url.pathname === '/api/napisy') {
+      const film = url.searchParams.get('film') ?? '', dir = inRoot(`/${film}`);
+      if (!dir || !isFilm(dir)) { res.writeHead(400).end('zły film'); return; }
+      const name = path.basename(dir), subs = path.join(dir, 'wynik', 'napisy');
+      const vtt = (l) => path.join(subs, `${name}.${l}.vtt`);
+      const src = ['film.js', 'teksty.js', 'lektor.js', 'proto/film.js', 'proto/lektor.js', 'napisy/en.json', 'napisy/cs.json']
+        .map((f) => path.join(dir, f)).filter((f) => fs.existsSync(f));
+      const newest = Math.max(...src.map((f) => fs.statSync(f).mtimeMs));
+      const reply = () => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(Object.fromEntries(['pl', 'en', 'cs']
+        .map((l) => [l, fs.existsSync(vtt(l)) ? `/${film}/wynik/napisy/${name}.${l}.vtt?${fs.statSync(vtt(l)).mtimeMs}` : null]))));
+      if (fs.existsSync(vtt('pl')) && fs.statSync(vtt('pl')).mtimeMs >= newest) { reply(); return; }
+      // kod wyjścia 1 = brak części tłumaczeń; języki, które się udały, i tak są zapisane
+      execFile(process.execPath, [path.join(ROOT, 'silnik', 'napisy.mjs'), dir], () => reply());
+      return;
+    }
     if (url.pathname === '/api/pliki' || url.pathname === '/api/dzwiek') {
       const film = url.searchParams.get('film') ?? '', dir = inRoot(`/${film}`);
-      if (!dir || !fs.existsSync(path.join(dir, 'film.js'))) { res.writeHead(400).end('zły film'); return; }
+      if (!dir || !isFilm(dir)) { res.writeHead(400).end('zły film'); return; }
       const out = path.join(dir, 'wynik');
       if (url.pathname === '/api/pliki') {
         const mp4 = fs.existsSync(out) ? fs.readdirSync(out).filter((f) => f.endsWith('.mp4')).sort((a, b) => fs.statSync(path.join(out, b)).mtimeMs - fs.statSync(path.join(out, a)).mtimeMs) : [];
@@ -64,10 +81,18 @@ export function createServer() {
         return;
       }
       const wav = path.join(out, `${path.basename(dir)}-dzwiek.wav`);
-      const src = ['film.js', 'teksty.js', 'lektor.js', 'znaczniki.json'].map((f) => path.join(dir, f)).filter((f) => fs.existsSync(f));
+      const src = ['film.js', 'teksty.js', 'lektor.js', 'znaczniki.json', 'proto/film.js'].map((f) => path.join(dir, f)).filter((f) => fs.existsSync(f));
       const fresh = fs.existsSync(wav) && src.every((f) => fs.statSync(f).mtimeMs <= fs.statSync(wav).mtimeMs);
       const reply = () => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ url: `/${film}/wynik/${path.basename(wav)}?${fs.statSync(wav).mtimeMs}` }));
       if (fresh) { reply(); return; }
+      if (!fs.existsSync(path.join(dir, 'film.js'))) {
+        // archiwum: własny kod bez --tylko-dzwiek — dźwięk z najnowszego pliku 16:9 w wynik/
+        const mp4 = fs.existsSync(out) && fs.readdirSync(out).filter((f) => f.endsWith('.mp4') && !/pion|9x16/.test(f))
+          .sort((a, b) => fs.statSync(path.join(out, b)).mtimeMs - fs.statSync(path.join(out, a)).mtimeMs)[0];
+        if (!mp4) { res.writeHead(404).end(`film z archiwum: włóż gotowy plik 16:9 do ${film}/wynik/ albo wyeksportuj go (node ${film}/eksport.mjs)`); return; }
+        execFile('ffmpeg', ['-y', '-loglevel', 'error', '-i', path.join(out, mp4), '-vn', '-ac', '2', '-ar', '48000', wav], (e, _o, stderr) => (e ? res.writeHead(500).end(stderr || String(e)) : reply()));
+        return;
+      }
       execFile(process.execPath, [path.join(ROOT, 'silnik', 'eksport.mjs'), dir, '--tylko-dzwiek'], (e, _o, stderr) => (e ? res.writeHead(500).end(stderr || String(e)) : reply()));
       return;
     }

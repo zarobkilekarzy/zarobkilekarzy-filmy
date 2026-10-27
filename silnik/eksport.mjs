@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
-import { openFilm, filmDir, closeServer, ROOT } from './przegladarka.mjs';
+import { openFilm, filmDir, closeServer, ROOT, plik } from './przegladarka.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
@@ -25,31 +25,41 @@ const NAME = path.basename(DIR);
 const VERT = flag('--vert'), SZKIC = flag('--szkic');
 
 /* ---------- stara wersja: worktree z taga, eksport tamtym kodem ---------- */
+// Repo filmu = generator (film w filmy/ generatora) albo własne repo z filmami, w którym generator jest submodułem —
+// wtedy silnik bierzemy z commita submodułu przypiętego w tagu (stary film renderuje się kodem, z którym powstał).
 if (arg('--wersja')) {
   const tag = arg('--wersja');
+  const git = (cwd, ...a) => execFileSync('git', ['-C', cwd, ...a], { encoding: 'utf8' }).trim();
+  const top = git(DIR, 'rev-parse', '--show-toplevel');
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'film-wersja-'));
-  execFileSync('git', ['-C', ROOT, 'worktree', 'add', '--detach', wt, tag], { stdio: 'inherit' });
+  const cleanup = [() => git(top, 'worktree', 'remove', '--force', wt)];
+  git(top, 'worktree', 'add', '--detach', wt, tag);
   try {
-    // marka: submoduł z bieżącego katalogu (ostrzeżenie, gdy tag przypina inny commit marki)
-    const pinned = execFileSync('git', ['-C', wt, 'ls-tree', 'HEAD', 'marka'], { encoding: 'utf8' }).split(/\s+/)[2];
-    const have = execFileSync('git', ['-C', path.join(ROOT, 'marka'), 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-    if (pinned && pinned !== have) console.warn(`uwaga: ${tag} przypina markę ${pinned.slice(0, 7)}, w repo jest ${have.slice(0, 7)}`);
-    fs.rmSync(path.join(wt, 'marka'), { recursive: true, force: true });
-    fs.symlinkSync(path.join(ROOT, 'marka'), path.join(wt, 'marka'));
-    fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(wt, 'node_modules'));
+    let engine = wt;
+    const sub = path.relative(top, ROOT);
+    if (sub && !sub.startsWith('..')) {
+      const pinned = git(wt, 'ls-tree', 'HEAD', sub).split(/\s+/)[2];
+      if (!pinned) throw new Error(`${tag}: w tej wersji nie ma submodułu ${sub}`);
+      engine = path.join(wt, sub);
+      fs.rmSync(engine, { recursive: true, force: true });
+      git(ROOT, 'worktree', 'add', '--detach', engine, pinned);   // commit musi być w lokalnym repo generatora (git fetch)
+      cleanup.unshift(() => git(ROOT, 'worktree', 'remove', '--force', engine));
+    }
+    fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(engine, 'node_modules'));
     const rest = argv.filter((a, i) => a !== '--wersja' && argv[i - 1] !== '--wersja' && a !== FILM_REL && path.resolve(a) !== DIR);
     const out = path.join(DIR, 'wynik', `${NAME}${VERT ? '-pion' : ''}-${tag.replaceAll('/', '-')}.mp4`);
-    const script = fs.existsSync(path.join(wt, 'silnik/eksport.mjs')) ? 'silnik/eksport.mjs' : null;
-    if (!script) throw new Error(`${tag}: brak silnik/eksport.mjs w tej wersji — uruchom eksport z jej katalogu ręcznie`);
-    execFileSync(process.execPath, [path.join(wt, script), path.join(wt, FILM_REL), ...rest, ...(arg('--out') ? [] : ['--out', out])], { stdio: 'inherit' });
+    const script = path.join(engine, 'silnik/eksport.mjs');
+    if (!fs.existsSync(script)) throw new Error(`${tag}: brak silnik/eksport.mjs w tej wersji — uruchom eksport z jej katalogu ręcznie`);
+    execFileSync(process.execPath, [script, path.join(wt, path.relative(top, DIR)), ...rest, ...(arg('--out') ? [] : ['--out', out])],
+      { stdio: 'inherit', env: { ...process.env, FILMY_PROJEKT: wt } });
   } finally {
-    execFileSync('git', ['-C', ROOT, 'worktree', 'remove', '--force', wt]);
+    for (const f of cleanup) f();
   }
   process.exit(0);
 }
 
 function version() {
-  try { return execFileSync('git', ['-C', ROOT, 'describe', '--tags', '--match', `${NAME}/*`, '--dirty', '--always'], { encoding: 'utf8' }).trim().replaceAll('/', '-'); }
+  try { return execFileSync('git', ['-C', DIR, 'describe', '--tags', '--match', `${NAME}/*`, '--dirty', '--always'], { encoding: 'utf8' }).trim().replaceAll('/', '-'); }
   catch { return 'bez-wersji'; }
 }
 const FPS = Number(arg('--fps') ?? (SZKIC ? 30 : 60));
@@ -143,7 +153,11 @@ fs.writeFileSync(wavPath, wav);
 
 // lektor: każdy plik przesunięty o v.at; wszystko razem do −16 LUFS (szczyt −1,5 dBTP).
 // `first` = numer wejścia ffmpeg z tłem (po nim pliki lektora).
-const voiceIn = VOICE.flatMap((v) => ['-i', path.join(ROOT, v.file)]);
+const voiceIn = VOICE.flatMap((v) => {
+  const f = plik(v.file);
+  if (!f) throw new Error(`brak pliku lektora ${v.file}`);
+  return ['-i', f];
+});
 const afmt = `aformat=sample_rates=${RATE}:channel_layouts=stereo`;
 const audioGraph = (first) => [
   `[${first}:a]${afmt}[bg]`,

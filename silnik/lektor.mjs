@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Lektor do filmu przez API ElevenLabs — po jednym klipie na zdanie z <film>/teksty.js.
-// Klucz API: zmienna ELEVENLABS_API_KEY, potem plik .env w katalogu repo (gitignored), na końcu
+// Klucz API: zmienna ELEVENLABS_API_KEY, potem plik .env projektu z filmami albo generatora (gitignored), na końcu
 // pęk kluczy macOS (Keychain), wpis zl-elevenlabs. Skrypt klucza nie wypisuje.
 //
 //   node silnik/lektor.mjs filmy/<nazwa> plan     → klipy i liczba znaków, bez sieci
@@ -10,15 +10,14 @@
 // Klip o tym samym tekście nagrywa się raz: przy kolejnych wersjach filmu skrypt dogrywa tylko nowe zdania
 // (nowe pliki mają w nazwie skrót tekstu), a stare zostają — także dla zarchiwizowanych wersji.
 //
-// Głos: Piotr (biblioteka), Multilingual v2, tempo ×1,0 (wolniej = mniej ciszy między kwestiami),
+// Głos: Piotr (biblioteka ElevenLabs, VOICE niżej — własny głos = inny identyfikator), Multilingual v2, tempo ×1,0 (wolniej = mniej ciszy między kwestiami),
 // kontekst tylko poprzedniego klipu (z następnym model dogrywał na końcu szum).
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { ROOT, PROJEKT } from './serwer.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [filmArg, cmd] = process.argv.slice(2);
 const HERE = path.resolve(filmArg ?? '.');
 if (!fs.existsSync(path.join(HERE, 'teksty.js'))) { console.log('użycie: node silnik/lektor.mjs filmy/<nazwa> plan | calosc'); process.exit(1); }
@@ -32,8 +31,8 @@ const CLIPS = Object.entries(win.TEKSTY).flatMap(([shot, l]) => (Array.isArray(l
 
 function key() {
   if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY.trim();
-  const env = path.join(ROOT, '.env');
-  if (fs.existsSync(env)) {
+  for (const env of [path.join(PROJEKT, '.env'), path.join(ROOT, '.env')]) {
+    if (!fs.existsSync(env)) continue;
     const m = fs.readFileSync(env, 'utf8').match(/^\s*ELEVENLABS_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?\s*$/m);
     if (m) return m[1].trim();
   }

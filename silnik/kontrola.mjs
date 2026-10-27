@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Lista kontrolna filmu → <film>/kontrola.md (commitowana z każdą wersją). Część automatyczna liczy się od nowa,
-// część ręczna (silnik/kontrola-reczna.md) zachowuje odhaczone pola z poprzedniego kontrola.md.
+// część ręczna (kontrola-reczna.md projektu albo silnik/kontrola-reczna.md) zachowuje odhaczone pola z poprzedniego kontrola.md.
 //
 //   node silnik/kontrola.mjs filmy/<nazwa>                          → źródła, liczby, czas czytania, strefy pionu, lektor
 //   node silnik/kontrola.mjs filmy/<nazwa> --plik wynik/x.mp4 [--plik wynik/x-pion.mp4]   → + głośność, metadane, długość
@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { openFilm, filmDir, closeServer, ROOT } from './przegladarka.mjs';
+import { openFilm, filmDir, closeServer, ROOT, PROJEKT } from './przegladarka.mjs';
 
 const argv = process.argv.slice(2);
 const files = argv.flatMap((a, i) => (argv[i - 1] === '--plik' ? [path.resolve(a)] : []));
@@ -121,10 +121,12 @@ for (const f of files) {
 }
 
 /* ---------- raport ---------- */
-const version = (() => { try { return execFileSync('git', ['-C', ROOT, 'describe', '--tags', '--match', `${NAME}/*`, '--dirty', '--always'], { encoding: 'utf8' }).trim(); } catch { return '—'; } })();
+const version = (() => { try { return execFileSync('git', ['-C', DIR, 'describe', '--tags', '--match', `${NAME}/*`, '--dirty', '--always'], { encoding: 'utf8' }).trim(); } catch { return '—'; } })();
 const out = path.join(DIR, 'kontrola.md');
 const prev = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
-const manual = fs.readFileSync(path.join(ROOT, 'silnik', 'kontrola-reczna.md'), 'utf8').trim().split('\n').map((l) => {
+// część ręczna: kontrola-reczna.md projektu z filmami (własne zasady redakcyjne), inaczej ogólna z silnika
+const manualFile = [path.join(PROJEKT, 'kontrola-reczna.md'), path.join(ROOT, 'silnik', 'kontrola-reczna.md')].find((f) => fs.existsSync(f));
+const manual = fs.readFileSync(manualFile, 'utf8').trim().split('\n').map((l) => {
   const item = l.replace(/^- \[ \] /, '');
   const old = [...prev.matchAll(/^- \[x\] (.+)$/gm)].find((m) => m[1].startsWith(item));
   return old ? `- [x] ${old[1]}` : l;
@@ -134,7 +136,7 @@ const md = `# Kontrola: ${NAME}
 
 Wersja: \`${version}\` · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} · ${files.length ? `pliki: ${files.map((f) => path.relative(DIR, f)).join(', ')}` : 'bez plików wideo'}
 
-**${errors.length ? `${errors.length} błędów` : 'bez błędów'}, ${notes.length} uwag.** Część automatyczna: \`node silnik/kontrola.mjs ${FILM_REL}\`.
+**${errors.length ? `${errors.length} błędów` : 'bez błędów'}, ${notes.length} uwag.** Część automatyczna: \`node ${path.relative(PROJEKT, path.join(ROOT, 'silnik', 'kontrola.mjs'))} ${FILM_REL}\`.
 
 ## Błędy (blokują publikację)
 ${list(errors)}

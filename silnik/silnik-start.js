@@ -18,9 +18,11 @@ const shotAt = (t) => SHOTS.find((s) => t >= s.t0 && t < s.t1) ?? SHOTS.at(-1);
 const T = (id) => SHOTS[IDX[id]].t0;
 const { TICKS = [], PIKS = [] } = sound();
 // Klipy lektora na osi filmu: mowa (c.start w pliku) zaczyna się w partStart po cięciu.
+// REC.dir względem katalogu filmu (starsze lektor.js: adres od korzenia serwera, z „/” na początku).
+const REC_DIR = REC?.dir?.startsWith('/') ? REC.dir : window.FILM_DIR + (REC?.dir ?? '');
 const VOICE = PARTS.flatMap((parts, n) => parts.map((_, k) => [n, k])).filter(([n, k]) => clipOf(n, k)).map(([n, k]) => {
   const c = clipOf(n, k), from = SHOTS[n].t0 + partStart(n, k);
-  return { file: REC.dir + c.wav, start: c.start, at: from - c.start, from, to: from + c.speech, text: c.text, align: c.align };
+  return { file: REC_DIR + c.wav, start: c.start, at: from - c.start, from, to: from + c.speech, text: c.text, align: c.align };
 });
 
 if (VERT) document.getElementById('wrap').style.maxWidth = 'min(100vw, calc((100vh - 140px) * 9 / 16))';

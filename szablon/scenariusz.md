@@ -3,8 +3,7 @@
 Stan danych: <data>. Format: 16:9 (X, strona) + pion 9:16 (TikTok, Shorts) z jednego kodu.
 
 ## Pomysł reżyserski
-Jedno–dwa zdania: jaki mechanizm film objaśnia i jakim obrazem. Teza ramowa: nie „płacimy za mało”,
-tylko „bez jawności źle gospodarujemy”.
+Jedno–dwa zdania: jaki mechanizm film objaśnia i jakim obrazem.
 
 ## Ujęcia
 | id | kadr (co widać) | lektor | źródło (klucz w zrodla.json) |

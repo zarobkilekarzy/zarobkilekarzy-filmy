@@ -1,9 +1,19 @@
-// Kolory i znak z repo marki (submoduł marka/) — silnik nie przepisuje ich ręcznie.
-// Motywy kadrów: noc i dzień = tokeny strony, trzeci „kadr” = pełny kobalt.
-// marka/kolory.mjs (cc1cad7) ma tylko podstawowe tokeny; tła, linie i kolory wykresów są tu jako literały
-// z src/styles/tokens.css strony (--bg, --line-2, --chart, --chart-soft, --amber) — do podmiany, gdy marka je dostanie.
-import { C } from '../marka/marka/kolory.mjs';
-import { EKG } from '../marka/marka/znak.mjs';
+// Marka kadrów: kolory motywów i znak „Puls” zarobkilekarzy.pl (logo interfejsu: silnik/logo.svg, silnik/znak.svg).
+// Własna marka = podmiana tego pliku (te same eksporty) i obu plików SVG — reszta silnika czyta tylko je.
+// Motywy kadrów: noc (dark) i dzień (light) = tokeny strony, trzeci „kadr” (blue) = pełny kolor marki.
+
+// Kolory strony (src/styles/tokens.css); n* = wartości trybu nocnego
+const C = {
+  blue: '#2664EC', ink: '#040B1B', muted: '#666E80',
+  nBlue: '#6E9BFF', nMuted: '#8691A5', nInk: '#EEF2F8', nAmber: '#EDB54A',
+};
+// Znak „Puls”: linia EKG w kwadracie 24×24 (tylko łamana — M x y, H x, L x y)
+const EKG = 'M0 14H7.5L10 5.5 13.5 18.5 15.5 14H24';
+
+// Napisy marki w kadrze: logo (nazwa + przyrostek przygaszony), plansza końcowa (hasło, konto na X; null = bez konta)
+export const NAZWA = ['zarobkilekarzy', '.pl'];
+export const HASLO = 'Każda liczba ma źródło.';
+export const KONTO = '@ZarobkiLekarzy';
 
 export const TH = {
   dark: { bg: '#0A0F1C', ink: C.nInk, muted: C.nMuted, accent: C.nBlue, line: 'rgba(238,242,248,0.16)',

@@ -10,10 +10,9 @@ Ogon: model potrafi po pauzie na końcu dograć ułamek sekundy szumu. Jeśli po
 50 ms. Wynik: NN-k.wav obok NN-k.mp3; `speech` = długość mowy po przycięciu. Wyrównanie znaków
 (`align`) zostaje — film.js liczy z niego, kiedy lektor dochodzi do danej frazy.
 """
-import json, re, subprocess, sys
+import json, os, re, subprocess, sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
 FILM = Path(sys.argv[1]).resolve()
 D = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else max((FILM / 'lektor').rglob('lektor.json'), key=lambda p: p.stat().st_mtime).parent
 L = json.loads((D / 'lektor.json').read_text())
@@ -51,10 +50,10 @@ for c in L['clips']:
     print(f"{c['shot']:2}.{c['part']}  mowa {c['speech']:5.2f} s  ucięty ogon {total - end:4.2f} s  {c['text']}")
 
 (D / 'lektor.json').write_text(json.dumps(L, ensure_ascii=False, indent=2))
-rel = D.relative_to(ROOT).as_posix()
-js = {'dir': f'/{rel}/', 'voice': L['voice'], 'speed': L['settings']['speed'],
+rel = D.relative_to(FILM).as_posix()          # względem katalogu filmu — film można przenieść
+js = {'dir': f'{rel}/', 'voice': L['voice'], 'speed': L['settings']['speed'],
       'clips': [{k: c[k] for k in ('shot', 'part', 'text', 'wav', 'start', 'end', 'speech', 'align')} for c in L['clips']]}
 (FILM / 'lektor.js').write_text(
     f"// Lektor (ElevenLabs, tempo ×{L['settings']['speed']}) — wygenerowane przez lektor_przygotuj.py z {rel}/lektor.json\n"
     f"window.LEKTOR = {json.dumps(js, ensure_ascii=False)};\n")
-print(f"razem mowy {sum(c['speech'] for c in L['clips']):.1f} s → {(FILM / 'lektor.js').relative_to(ROOT)}")
+print(f"razem mowy {sum(c['speech'] for c in L['clips']):.1f} s → {os.path.relpath(FILM / 'lektor.js')}")

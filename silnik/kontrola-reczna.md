@@ -1,12 +1,8 @@
-- [ ] Każda teza ma ogólnodostępne źródło (link w `zrodla.json`); akty prawne i wyroki — tylko teksty pierwotne (ELI, ECLI).
-- [ ] Fakt ≠ zarzut: podejrzenia oznaczone wprost („według doniesień”, „bez zarzutów”).
-- [ ] Przykład modelowy podpisany wprost — w kadrze i u lektora.
-- [ ] Film trzyma się obowiązującego prawa, nie ustaw uchwalonych, a niewprowadzonych.
-- [ ] Bez nazwisk, także osób publicznych: mechanizmy, nie osoby.
-- [ ] Liczby dokładne, bez zaokrąglania w stronę sensacji; szacunek podpisany jako szacunek.
-- [ ] Ton: spokojny watchdog, objaśnia mechanizm; bez polemiki, „mitów” i wykrzykników.
-- [ ] Korekta językowa: wszystkie teksty (lektor, kadry, napisy PL/EN/CS) przeczytał drugi agent, który nie znał scenariusza; uwagi poprawione.
+- [ ] Każda liczba i teza ma źródło w `zrodla.json` (link do materiału pierwotnego, nie do omówienia).
+- [ ] Szacunki, modele i przykłady podpisane wprost — w kadrze i u lektora.
+- [ ] Liczby dokładne, bez zaokrąglania w stronę sensacji.
+- [ ] Korekta językowa: wszystkie teksty (lektor, kadry, napisy) przeczytała osoba, która nie pisała scenariusza.
 - [ ] Tekst lektora przeczytany na głos przed nagraniem; nagranie przesłuchane w całości (przekręcone słowa, szum na końcach klipów).
 - [ ] Pion obejrzany ze strefami aplikacji (`eksport.mjs … --vert --sz --stills …`).
-- [ ] Tłumaczenia EN i CS przejrzane; w opisie filmu nota, że napisy tłumaczył agent.
-- [ ] Zgoda usera na publikację tej wersji (data, gdzie).
+- [ ] Tłumaczenia napisów przejrzane.
+- [ ] Zgoda na publikację tej wersji (kto, data, gdzie).

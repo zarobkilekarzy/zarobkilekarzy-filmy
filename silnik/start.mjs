@@ -1,7 +1,7 @@
 // Ładowanie filmu: marka (kolory, znak) → dane filmu (zrodla.json, znaczniki.json) → skrypty w ustalonej
 // kolejności. Skrypty filmu są zwykłymi skryptami (nie modułami): dzielą jedną przestrzeń nazw z silnikiem,
 // tak jak w prototypach sprzed wydzielenia silnika.
-import { TH, ECG } from './marka.mjs';
+import * as MARKA from './marka.mjs';
 
 const q = new URLSearchParams(location.search);
 const film = `/${(q.get('film') ?? 'szablon').replace(/^\/+|\/+$/g, '')}/`;
@@ -23,7 +23,7 @@ function script(src) {
 
 window.addEventListener('error', (e) => { window.FILM_ERROR = e.message; document.getElementById('err').textContent = e.message; });
 try {
-  window.MARKA = { TH, ECG };
+  window.MARKA = MARKA;
   window.FILM_DIR = film;
   window.ZRODLA = await json('zrodla.json', {});
   window.ZNACZNIKI_POPRAWKI = await json('znaczniki.json', {});

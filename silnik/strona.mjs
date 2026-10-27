@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-// Pliki filmu na stronę zarobkilekarzy.pl z mastera 16:9: MP4 do 25 MiB (limit pliku statycznego Workera), HLS
+// Pliki filmu na stronę WWW z mastera 16:9: MP4 do 25 MiB (limit pliku statycznego Cloudflare Workers), HLS
 // (Safari na iPhonie potrzebuje Range przy MP4, a Worker go nie obsługuje — HLS to obchodzi), okładka WebP
 // (pierwsza klatka) i napisy VTT do <track>. Bez metadanych poza enkoderem.
 //
 //   node silnik/strona.mjs filmy/<nazwa> --master filmy/<nazwa>/wynik/<plik>.mp4 [--nazwa <slug>]
 //        → <film>/wynik/strona/<slug>/{<slug>.mp4, <slug>.webp, hls/, <slug>.<język>.vtt}
-//   … --do ../zarobkilekarzy.pl   → kopia do public/film/<slug>/ w repo strony (tylko na wyraźne polecenie;
-//        dalej jak przy każdej zmianie strony: podgląd, commit i push dopiero po „wypchnij”)
+//   … --do <repo strony Astro>   → kopia do public/film/<slug>/ w tym repo (bez commita)
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -49,5 +48,5 @@ if (arg('--do')) {
   if (!fs.existsSync(path.join(site, 'astro.config.mjs'))) { console.log(`${site}: to nie jest repo strony`); process.exit(1); }
   const dst = path.join(site, 'public', 'film', slug);
   fs.cpSync(out, dst, { recursive: true });
-  console.log(`→ ${dst} (niezacommitowane; FilmData w src/data/film.ts uzupełnia się ręcznie)`);
+  console.log(`→ ${dst} (niezacommitowane)`);
 }

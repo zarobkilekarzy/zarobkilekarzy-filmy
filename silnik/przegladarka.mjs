@@ -4,10 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createServer, ROOT } from './serwer.mjs';
+import { createServer, ROOT, PROJEKT, plik } from './serwer.mjs';
 
-export { ROOT };
-export const CHROME = process.env.CHROME ?? '/Applications/Chromium.app/Contents/MacOS/Chromium';
+export { ROOT, PROJEKT, plik };
+// Chromium albo Chrome: zmienna CHROME, inaczej pierwsza znana ścieżka (macOS, Linux)
+export const CHROME = process.env.CHROME ?? ['/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
+  '/usr/bin/google-chrome', '/snap/bin/chromium'].find((f) => fs.existsSync(f)) ?? 'chromium';
 
 let server = null, serverPort = 0;
 async function ensureServer() {
@@ -18,14 +21,19 @@ async function ensureServer() {
   return serverPort;
 }
 
-/** Katalog filmu względem repo (np. `filmy/doba`, `szablon`) z argumentu wiersza poleceń. Filmy z archiwum
-    (własny kod w proto/) też się otwierają — napisy i kontrola działają, jeśli strona wystawia FILM.voice. */
+/** Katalog filmu z argumentu wiersza poleceń; `rel` = adres na serwerze, czyli ścieżka względem projektu z filmami
+    (np. `filmy/doba`) albo generatora (`szablon`). Filmy z własnym kodem w proto/ (archiwum) też się otwierają —
+    napisy działają, jeśli strona wystawia FILM.voice. */
 export function filmDir(arg) {
   if (!arg) throw new Error('podaj katalog filmu, np. filmy/<nazwa> albo szablon');
-  const abs = path.resolve(arg);
-  const rel = path.relative(ROOT, abs).split(path.sep).join('/');
+  let abs = path.resolve(arg);
+  // `filmy/x` także spoza katalogu projektu, `szablon` z generatora
+  for (const base of [PROJEKT, ROOT]) if (!fs.existsSync(abs) && !path.isAbsolute(arg)) abs = path.resolve(base, arg);
+  const inside = (base) => { const r = path.relative(base, abs); return r.startsWith('..') || path.isAbsolute(r) ? null : r; };
+  const rel = (inside(PROJEKT) ?? inside(ROOT) ?? '..').split(path.sep).join('/');
   const archive = !fs.existsSync(path.join(abs, 'film.js')) && fs.existsSync(path.join(abs, 'proto', 'film.js'));
-  if (rel.startsWith('..') || !(archive || fs.existsSync(path.join(abs, 'film.js')))) throw new Error(`${arg}: to nie jest katalog filmu (brak film.js)`);
+  if (rel.startsWith('..')) throw new Error(`${arg}: film musi leżeć w projekcie (${PROJEKT}) albo w generatorze`);
+  if (!(archive || fs.existsSync(path.join(abs, 'film.js')))) throw new Error(`${arg}: to nie jest katalog filmu (brak film.js)`);
   return { abs, rel, archive };
 }
 

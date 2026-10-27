@@ -1,6 +1,13 @@
 {
   "name": "zarobkilekarzy-filmy",
+  "version": "1.0.0",
+  "description": "Generator krótkich filmów z liczbami i źródłami: kod rysuje kadry, eksport do MP4 w 16:9 i w pionie 9:16, lektor, napisy, kontrola.",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zarobkilekarzy/zarobkilekarzy-filmy.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.4"
@@ -16,7 +23,6 @@
     "strona": "node silnik/strona.mjs"
   },
   "dependencies": {
-    "@resvg/resvg-js": "2.6.2",
     "mediabunny": "1.62.1",
     "sharp": "0.35.5",
     "wavesurfer.js": "8.0.3"

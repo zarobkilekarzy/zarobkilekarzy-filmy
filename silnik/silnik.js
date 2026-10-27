@@ -1,4 +1,4 @@
-// Silnik filmów zarobkilekarzy.pl (opis: README.md repo). Styl strony v2: kobalt + granat + biel, Inter Tight,
+// Silnik filmów (opis: README.md repo; marka: silnik/marka.mjs). Styl zarobkilekarzy.pl: kobalt + granat + biel, Inter Tight,
 // etykiety Plex Mono, linie 1 px, ostre narożniki. Każda klatka zależy tylko od t (render(t)), więc ten sam
 // kod służy do podglądu i do eksportu klatka po klatce. Jeden kod, dwie wersje: 16:9 (X, strona) i ?v=1 —
 // pion 1080×1920 (TikTok, YouTube Shorts). Treść filmu: <film>/film.js; ładuje je silnik/start.mjs.
@@ -14,8 +14,9 @@ const LOGO_Y = VERT ? 252 : 62, FOOT_Y = 1024, CAP_Y = 1306;
 // są projektowane na polu 70–1010 × 360–1420 i wpisywane w pole bezpieczne SAFE (skala 0,77).
 const SAFE = { x: 70, y: 430, from: 360, k: 0.77, right: 900 };
 
-// Motywy kadrów (noc / dzień / kobalt) i linia EKG znaku — z repo marki (silnik/marka.mjs).
+// Motywy kadrów (noc / dzień / kobalt), linia EKG znaku i napisy marki — silnik/marka.mjs.
 const TH = window.MARKA.TH;
+const [NAZWA, NAZWA_PRZYROSTEK = ''] = window.MARKA.NAZWA, HASLO = window.MARKA.HASLO, KONTO = window.MARKA.KONTO;
 const F = { disp: '"Inter Tight", sans-serif', body: 'Plex, sans-serif', mono: '"Plex Mono", monospace' };
 
 // Supersampling do eksportu (?ss=2): kadr rysowany w 3840×2160, zmniejszany przy zapisie klatki.
@@ -162,7 +163,7 @@ function place(kind, x, y, s, k = 1, alpha = 1) {
 
 // Znak serwisu X (src/icons.ts: x), w układzie 24×24.
 const X_LOGO = new Path2D('M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z');
-// Linia EKG ze znaku „Puls” (repo marki: marka/znak.mjs), w układzie 24×24.
+// Linia EKG ze znaku (silnik/marka.mjs), w układzie 24×24.
 const ECG = window.MARKA.ECG;
 function mark(x, y, s, k = 1) {
   rect(x, y, s, s, th.mark);
@@ -175,9 +176,9 @@ function mark(x, y, s, k = 1) {
 }
 function logo() {
   mark(M, LOGO_Y, 40);
-  const w = measure('zarobkilekarzy', 34, 500);
-  txt('zarobkilekarzy', M + 54, LOGO_Y + 32, { size: 34, weight: 500 });
-  txt('.pl', M + 54 + w, LOGO_Y + 32, { size: 34, weight: 500, color: th.wordDim });
+  const w = measure(NAZWA, 34, 500);
+  txt(NAZWA, M + 54, LOGO_Y + 32, { size: 34, weight: 500 });
+  txt(NAZWA_PRZYROSTEK, M + 54 + w, LOGO_Y + 32, { size: 34, weight: 500, color: th.wordDim });
 }
 // Źródła: <film>/zrodla.json — klucz ujęcia (`src: 'klucz'`) → pełna stopka 16:9 i krótka linia pionu.
 // Z tego samego pliku biorą się napisy ze źródłami na stronę i kontrola liczb (silnik/kontrola.mjs).
@@ -326,28 +327,29 @@ function caption(t) {
 function endCard(lt) {
   const s = 180, k = outExpo(seg(lt, 0.1, 0.6));
   mark(W / 2 - s / 2, 230, s, k);
-  const w1 = measure('zarobkilekarzy', 110, 500), w2 = measure('.pl', 110, 500);
+  const w1 = measure(NAZWA, 110, 500), w2 = measure(NAZWA_PRZYROSTEK, 110, 500);
   const x = W / 2 - (w1 + w2) / 2, a = seg(lt, 0.3, 0.5);
-  txt('zarobkilekarzy', x, 600, { size: 110, weight: 500, alpha: a });
-  txt('.pl', x + w1, 600, { size: 110, weight: 500, color: th.wordDim, alpha: a });
-  rise('Każda liczba ma źródło.', W / 2, 720, 56, lt, 0.55, { weight: 400, align: 'center' });
+  txt(NAZWA, x, 600, { size: 110, weight: 500, alpha: a });
+  txt(NAZWA_PRZYROSTEK, x + w1, 600, { size: 110, weight: 500, color: th.wordDim, alpha: a });
+  rise(HASLO, W / 2, 720, 56, lt, 0.55, { weight: 400, align: 'center' });
   handle(lt, 820, 30);
 }
 function endCardV(lt) {
   const s2 = 280, k = outExpo(seg(lt, 0.1, 0.6));
   mark(W / 2 - s2 / 2, 420, s2, k);
-  const fs = fitSize('zarobkilekarzy.pl', 150, 500), w1 = measure('zarobkilekarzy', fs, 500), w2 = measure('.pl', fs, 500);
+  const fs = fitSize(NAZWA + NAZWA_PRZYROSTEK, 150, 500), w1 = measure(NAZWA, fs, 500), w2 = measure(NAZWA_PRZYROSTEK, fs, 500);
   const x = W / 2 - (w1 + w2) / 2, a = seg(lt, 0.3, 0.5);
-  txt('zarobkilekarzy', x, 940, { size: fs, weight: 500, alpha: a, max: 9999 });
-  txt('.pl', x + w1, 940, { size: fs, weight: 500, color: th.wordDim, alpha: a, max: 9999 });
-  rise('Każda liczba ma źródło.', W / 2, 1080, 72, lt, 0.55, { weight: 400, align: 'center' });
+  txt(NAZWA, x, 940, { size: fs, weight: 500, alpha: a, max: 9999 });
+  txt(NAZWA_PRZYROSTEK, x + w1, 940, { size: fs, weight: 500, color: th.wordDim, alpha: a, max: 9999 });
+  rise(HASLO, W / 2, 1080, 72, lt, 0.55, { weight: 400, align: 'center' });
   handle(lt, 1230, 44);
 }
 /** znak serwisu X i nazwa konta, wyśrodkowane */
 function handle(lt, y, size) {
-  const ha = seg(lt, 0.8, 1.0), hw = measure('@ZarobkiLekarzy', size, 500, F.mono, 0.04), gap = size * 0.45;
+  if (!KONTO) return;
+  const ha = seg(lt, 0.8, 1.0), hw = measure(KONTO, size, 500, F.mono, 0.04), gap = size * 0.45;
   const x0 = W / 2 - (size + gap + hw) / 2;
   ctx.save(); ctx.globalAlpha = ha; ctx.fillStyle = th.ink;
   ctx.translate(x0, y - size * 0.86); ctx.scale(size / 24, size / 24); ctx.fill(X_LOGO); ctx.restore();
-  txt('@ZarobkiLekarzy', x0 + size + gap, y, { size, weight: 500, font: F.mono, track: 0.04, color: th.ink, alpha: ha });
+  txt(KONTO, x0 + size + gap, y, { size, weight: 500, font: F.mono, track: 0.04, color: th.ink, alpha: ha });
 }

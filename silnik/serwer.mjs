@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Serwer plików z katalogu repo (podgląd filmu, odtwarzacz, eksport). Zapis tylko dwóch plików filmu:
+// Serwer plików (podgląd filmu, odtwarzacz, eksport). Adres /x szuka pliku najpierw w katalogu projektu z filmami
+// (PROJEKT), potem w generatorze (ROOT: silnik/, odtwarzacz/, szablon/, node_modules/). Zapis tylko dwóch plików filmu:
 // POST /api/zapisz?film=filmy/<nazwa>&plik=uwagi.json|znaczniki.json (treść = JSON).
 //
 //   node silnik/serwer.mjs [--port 4471]   → http://127.0.0.1:4471/silnik/?film=szablon · /odtwarzacz/?film=…
@@ -13,6 +14,15 @@ import { execFileSync, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Katalog projektu z filmami: FILMY_PROJEKT, inaczej repo, w którym generator jest submodułem, inaczej sam generator
+export const PROJEKT = (() => {
+  if (process.env.FILMY_PROJEKT) return path.resolve(process.env.FILMY_PROJEKT);
+  try {
+    const sup = execFileSync('git', ['-C', ROOT, 'rev-parse', '--show-superproject-working-tree'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (sup) return sup;
+  } catch {}
+  return ROOT;
+})();
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
@@ -21,11 +31,18 @@ const MIME = {
 const WRITABLE = new Set(['uwagi.json', 'znaczniki.json']);
 
 const isFilm = (dir) => fs.existsSync(path.join(dir, 'film.js')) || fs.existsSync(path.join(dir, 'proto', 'film.js'));
-function inRoot(p) { const f = path.resolve(ROOT, `.${p}`); return f === ROOT || f.startsWith(ROOT + path.sep) ? f : null; }
+/** Ścieżka z adresu (/filmy/x/lektor/a.wav) → plik w projekcie albo w generatorze; null, gdy nie ma albo wychodzi poza nie */
+export function plik(p) {
+  for (const base of new Set([PROJEKT, ROOT])) {
+    const f = path.resolve(base, `.${p}`);
+    if ((f === base || f.startsWith(base + path.sep)) && fs.existsSync(f)) return f;
+  }
+  return null;
+}
 
 async function save(req, res, url) {
   const film = url.searchParams.get('film') ?? '', plik = url.searchParams.get('plik') ?? '';
-  const dir = inRoot(`/${film}`);
+  const dir = plik(`/${film}`);
   if (!WRITABLE.has(plik) || !dir || !isFilm(dir)) { res.writeHead(400).end('zły film albo plik'); return; }
   let body = '';
   for await (const chunk of req) body += chunk;
@@ -50,14 +67,14 @@ export function createServer() {
     if (req.method === 'POST' && url.pathname === '/api/zapisz') { save(req, res, url).catch((e) => res.writeHead(500).end(String(e))); return; }
     if (url.pathname === '/api/wersja') {
       // wersja filmu z gita (tag <nazwa>/vN + commit) — odtwarzacz zapisuje ją przy uwagach
-      const name = path.basename(url.searchParams.get('film') ?? '');
+      const dir = plik(`/${url.searchParams.get('film') ?? ''}`), name = path.basename(dir ?? '');
       let v = '—';
-      try { v = execFileSync('git', ['-C', ROOT, 'describe', '--tags', '--match', `${name}/*`, '--dirty', '--always'], { encoding: 'utf8' }).trim(); } catch {}
+      try { v = execFileSync('git', ['-C', dir, 'describe', '--tags', '--match', `${name}/*`, '--dirty', '--always'], { encoding: 'utf8' }).trim(); } catch {}
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ wersja: v }));
       return;
     }
     if (url.pathname === '/api/napisy') {
-      const film = url.searchParams.get('film') ?? '', dir = inRoot(`/${film}`);
+      const film = url.searchParams.get('film') ?? '', dir = plik(`/${film}`);
       if (!dir || !isFilm(dir)) { res.writeHead(400).end('zły film'); return; }
       const name = path.basename(dir), subs = path.join(dir, 'wynik', 'napisy');
       const vtt = (l) => path.join(subs, `${name}.${l}.vtt`);
@@ -72,7 +89,7 @@ export function createServer() {
       return;
     }
     if (url.pathname === '/api/pliki' || url.pathname === '/api/dzwiek') {
-      const film = url.searchParams.get('film') ?? '', dir = inRoot(`/${film}`);
+      const film = url.searchParams.get('film') ?? '', dir = plik(`/${film}`);
       if (!dir || !isFilm(dir)) { res.writeHead(400).end('zły film'); return; }
       const out = path.join(dir, 'wynik');
       if (url.pathname === '/api/pliki') {
@@ -96,7 +113,7 @@ export function createServer() {
       execFile(process.execPath, [path.join(ROOT, 'silnik', 'eksport.mjs'), dir, '--tylko-dzwiek'], (e, _o, stderr) => (e ? res.writeHead(500).end(stderr || String(e)) : reply()));
       return;
     }
-    const p = inRoot(decodeURIComponent(url.pathname));
+    const p = plik(decodeURIComponent(url.pathname));
     const file = p && (url.pathname.endsWith('/') ? path.join(p, 'index.html') : p);
     if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404).end(); return; }
     send(req, res, file);
@@ -105,5 +122,5 @@ export function createServer() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const i = process.argv.indexOf('--port'), port = i > 0 ? +process.argv[i + 1] : 4471;
-  createServer().listen(port, '127.0.0.1', () => console.log(`http://127.0.0.1:${port}/silnik/?film=szablon  ·  /odtwarzacz/?film=szablon`));
+  createServer().listen(port, '127.0.0.1', () => console.log(`http://127.0.0.1:${port}/silnik/?film=szablon  ·  /odtwarzacz/?film=szablon\nfilmy z: ${PROJEKT}`));
 }

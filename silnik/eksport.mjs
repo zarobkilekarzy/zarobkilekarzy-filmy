@@ -19,7 +19,8 @@ import { openFilm, filmDir, closeServer, ROOT } from './przegladarka.mjs';
 const argv = process.argv.slice(2);
 const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
 const flag = (name) => argv.includes(name);
-const { abs: DIR, rel: FILM_REL } = filmDir(argv.find((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--')));
+const { abs: DIR, rel: FILM_REL, archive } = filmDir(argv.find((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--')));
+if (archive) { console.log(`Film z archiwum ma własny eksport: node ${FILM_REL}/eksport.mjs`); process.exit(1); }
 const NAME = path.basename(DIR);
 const VERT = flag('--vert'), SZKIC = flag('--szkic');
 

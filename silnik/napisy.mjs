@@ -98,7 +98,8 @@ function lines(s) {
   let best = null;
   for (let i = s.indexOf(' '); i > 0; i = s.indexOf(' ', i + 1)) {
     const a = s.slice(0, i), b = s.slice(i + 1);
-    const score = Math.max(len(a), len(b)) + (len(a) > MAX_LINE || len(b) > MAX_LINE ? 1000 : 0);
+    // krótki przyimek albo spójnik na końcu pierwszej linii („za”, „na”, „do”) czyta się gorzej niż nierówne linie
+    const score = Math.max(len(a), len(b)) + (len(a) > MAX_LINE || len(b) > MAX_LINE ? 1000 : 0) + (/(^|\s)\p{L}{1,2}$/u.test(a) ? 8 : 0);
     if (!best || score < best.score) best = { score, l: [a, b] };
   }
   return best ? best.l : [s];

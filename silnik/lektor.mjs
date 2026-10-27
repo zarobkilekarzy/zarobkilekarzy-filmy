@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Lektor do filmu przez API ElevenLabs — po jednym klipie na zdanie z <film>/teksty.js.
+// Lektor do filmu przez API ElevenLabs — po jednym klipie na zdanie z <film>/teksty.js (i z domyślnych kwestii ujęć,
+// np. nazwy marki na planszy końcówki `ending`).
 // Klucz API: zmienna ELEVENLABS_API_KEY, potem plik .env projektu z filmami albo generatora (gitignored), na końcu
 // pęk kluczy macOS (Keychain), wpis zl-elevenlabs. Skrypt klucza nie wypisuje.
 //
@@ -17,17 +18,19 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { ROOT, PROJEKT } from './serwer.mjs';
+import { openFilm, filmDir, closeServer } from './przegladarka.mjs';
 
 const [filmArg, cmd] = process.argv.slice(2);
-const HERE = path.resolve(filmArg ?? '.');
-if (!fs.existsSync(path.join(HERE, 'teksty.js'))) { console.log('użycie: node silnik/lektor.mjs filmy/<nazwa> plan | calosc'); process.exit(1); }
+if (!filmArg || !['plan', 'calosc'].includes(cmd)) { console.log('użycie: node silnik/lektor.mjs filmy/<nazwa> plan | calosc'); process.exit(1); }
+const { abs: HERE, rel: FILM_REL } = filmDir(filmArg);
 const API = 'https://api.elevenlabs.io';
 const VOICE = 'o2xdfKUpc1Bwq7RchZuW', MODEL = 'eleven_multilingual_v2', SPEED = 1.0, SEED = 1717;
 const VOICE_SETTINGS = { stability: 0.55, similarity_boost: 0.75, style: 0, use_speaker_boost: true, speed: SPEED };
 
-const win = {};
-new Function('window', fs.readFileSync(path.join(HERE, 'teksty.js'), 'utf8'))(win);
-const CLIPS = Object.entries(win.TEKSTY).flatMap(([shot, l]) => (Array.isArray(l) ? l : l ? [l] : []).map((text, part) => ({ shot, part, text })));
+// Kwestie bierze z silnika, w kolejności ujęć filmu: teksty.js i domyślne kwestie ujęć (np. nazwa na planszy końcówki).
+const page = await openFilm({ film: FILM_REL });
+const CLIPS = await page.evaluate('SHOTS.flatMap((s, n) => PARTS[n].map((text, part) => ({ shot: s.id, part, text })))');
+page.close(); closeServer();
 
 function key() {
   if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY.trim();

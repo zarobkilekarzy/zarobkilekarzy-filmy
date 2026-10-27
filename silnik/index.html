@@ -41,6 +41,15 @@
   <div id="err"></div>
 </div>
 <!-- ?film=filmy/<nazwa> (domyślnie szablon) · ?v=1 pion · ?sz=1 strefy aplikacji · ?ss=2 supersampling · #t=12.5 -->
+<!-- Sam silnik dla odtwarzacza (?embed=1) i eksportu (?render=1); człowiek oglądający film trafia do odtwarzacza. -->
+<script>
+  { const q = new URLSearchParams(location.search);
+    if (!q.has('embed') && !q.has('render')) {
+      const o = new URLSearchParams();
+      for (const k of ['film', 'v', 'sz']) if (q.has(k)) o.set(k, q.get(k));
+      location.replace(`/odtwarzacz/?${o}${location.hash}`);
+    } }
+</script>
 <script type="module" src="start.mjs"></script>
 </body>
 </html>

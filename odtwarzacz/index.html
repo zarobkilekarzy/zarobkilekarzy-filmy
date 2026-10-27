@@ -7,43 +7,59 @@
 <link rel="icon" href="/silnik/znak.svg">
 <link rel="stylesheet" href="/silnik/fonty.css">
 <style>
-  :root { --bg: #05080F; --panel: #0C1322; --panel2: #131B2E; --line: #2C3549; --ink: #EEF2F8; --muted: #8691A5; --blue: #2664EC; --blue2: #6E9BFF; --amber: #EDB54A; --ok: #4FC98F; }
+  :root { --bg: #05080F; --panel: #0C1322; --panel2: #131B2E; --panel3: #1B2438; --line: #2C3549; --ink: #EEF2F8; --muted: #8691A5;
+    --blue: #2664EC; --blue2: #6E9BFF; --amber: #EDB54A; --ok: #4FC98F; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px Plex, system-ui, sans-serif; }
   /* minmax(0, 1fr): żaden pasek (nawet bez zawijania) nie poszerza strony ponad okno */
   body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: 100vh; overflow: hidden; }
   header, main, footer { min-width: 0; }
-  button, select, textarea, input { font: 12px 'Plex Mono', monospace; color: var(--ink); background: var(--panel2); border: 1px solid var(--line); border-radius: 0; }
-  button { padding: 4px 9px; cursor: pointer; }
+  /* interfejs: IBM Plex Sans (czytelny przy małym stopniu); Plex Mono tylko tam, gdzie cyfry muszą stać równo (czas, wersja) */
+  button, select, textarea, input { font: 500 13px Plex, system-ui, sans-serif; color: var(--ink); background: var(--panel2); border: 1px solid var(--line); border-radius: 0; }
+  button, select { height: 30px; padding: 0 10px; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
   button.on { background: var(--blue); border-color: var(--blue); }
   button:disabled { opacity: .4; cursor: default; }
-  .mono { font-family: 'Plex Mono', monospace; font-size: 12px; letter-spacing: .04em; }
-  .label { font: 500 11px 'Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  button.icon { width: 34px; padding: 0; }
+  button.play { width: 46px; background: var(--ink); color: var(--bg); border-color: var(--ink); font-size: 14px; }
+  .mono { font-family: 'Plex Mono', monospace; font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  .label { font: 600 11px Plex, system-ui, sans-serif; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .spacer { flex: 1; }
+  /* grupa przełączników z etykietą: przyciski sklejone w jeden segment */
+  .grp { display: flex; align-items: center; gap: 8px; }
+  .seg { display: flex; }
+  .seg > * + * { margin-left: -1px; }
 
-  header { display: flex; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  header .logo { display: flex; margin-right: 10px; }
+  header { display: flex; gap: 18px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header .brand { display: flex; align-items: center; gap: 12px; }
+  header .logo { display: flex; }
   header .logo img { height: 18px; width: auto; display: block; }
-  header h1 { font: 500 16px 'Inter Tight', sans-serif; letter-spacing: -.02em; margin: 0 12px 0 0; }
-  header .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+  header h1 { font: 500 17px 'Inter Tight', sans-serif; letter-spacing: -.02em; margin: 0; }
   #wersja { color: var(--muted); }
-  #time { min-width: 18ch; text-align: right; margin-left: auto; }
 
   /* minmax(0, …): kolumna kadru nie może rosnąć od jego treści — inaczej kadr i kolumna przeliczają się nawzajem (mruganie) */
   main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); min-height: 0; }
   #stage { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; }
   /* rozmiar kadru liczy fitFrame() z wymiarów #stage (16:9 albo 9:16, z marginesem 16 px) */
-  #frame { position: relative; flex: none; background: #0A0F1C; overflow: hidden; }
+  #frame { position: relative; flex: none; background: #0A0F1C; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
   #frame iframe, #frame video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
-  #pins { position: absolute; inset: 0; }
+  /* warstwa nad kadrem: kliknięcie = start/pauza; z pinezką — miejsce uwagi */
+  #pins { position: absolute; inset: 0; cursor: pointer; }
   #pins.armed { cursor: crosshair; outline: 2px dashed var(--amber); outline-offset: 2px; }
+  #paused { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; opacity: 0; transition: opacity .15s; }
+  #paused span { width: 64px; height: 64px; display: grid; place-items: center; background: rgba(5, 8, 15, .6); color: #fff; font-size: 24px; }
+  #paused.show { opacity: 1; }
   /* napisy na kadrze (jak w odtwarzaczu serwisu): stopień liczony od szerokości kadru */
   #frame { container-type: size; }
   #caption { position: absolute; left: 0; right: 0; bottom: 7%; display: flex; justify-content: center; pointer-events: none; }
   #caption span { max-width: 82%; text-align: center; white-space: pre-line; background: rgba(5, 8, 15, .78); color: #fff;
     font: 500 2.3cqw/1.3 Plex, sans-serif; padding: .2em .5em; }
+  #caption span.est { color: #C9D2E0; font-style: italic; }
+  #still { position: absolute; left: 10px; top: 10px; padding: 4px 8px; background: rgba(5, 8, 15, .75); color: var(--ink);
+    font: 500 12px Plex, sans-serif; pointer-events: none; }
   #frame.pion #caption { bottom: 30%; }
   #frame.pion #caption span { font-size: 4.2cqw; }
-  .pin { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; background: var(--amber); color: #05080F; font: 600 11px 'Plex Mono', monospace; display: grid; place-items: center; }
+  .pin { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; background: var(--amber); color: #05080F; font: 600 12px Plex, sans-serif; display: grid; place-items: center; }
 
   aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
   aside .head { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
@@ -58,47 +74,83 @@
   .uwaga.done { opacity: .5; }
   .uwaga.current { box-shadow: inset 3px 0 0 var(--amber); }
   .uwaga .meta { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-  .chip { font: 500 10px 'Plex Mono', monospace; letter-spacing: .06em; text-transform: uppercase; padding: 1px 5px; border: 1px solid var(--line); color: var(--muted); }
+  .chip { font: 600 11px Plex, sans-serif; letter-spacing: .04em; padding: 1px 5px; border: 1px solid var(--line); color: var(--muted); }
   .uwaga .txt { white-space: pre-wrap; line-height: 1.4; }
   .uwaga .act { display: flex; gap: 6px; margin-top: 6px; }
-  .uwaga .act button { padding: 2px 6px; font-size: 11px; }
+  .uwaga .act button { height: 26px; padding: 0 8px; font-size: 12px; }
   .empty { padding: 16px 12px; color: var(--muted); line-height: 1.5; }
 
-  footer { border-top: 1px solid var(--line); padding: 8px 12px 10px; background: var(--panel); }
+  footer { border-top: 1px solid var(--line); padding: 8px 14px 6px; background: var(--panel); position: relative; }
   /* jedna linia bez zawijania: przyciski zaznaczenia pojawiają się i znikają, a wysokość paska (i kadru) ma zostać */
-  footer .bar { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: nowrap; white-space: nowrap; }
-  footer .bar .hint { color: var(--muted); margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  footer .bar { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; white-space: nowrap; }
+  #time { font-size: 15px; min-width: 19ch; }
+  #shot { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #zoom { width: 140px; accent-color: var(--blue2); }
+
+  /* miniatury ujęć: klik = początek ujęcia */
+  #strip { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 6px; height: 104px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .thumb { flex: none; display: flex; flex-direction: column; gap: 4px; height: auto; padding: 3px; background: var(--panel2); border: 1px solid var(--line); text-align: left; }
+  .thumb img { display: block; height: 54px; width: auto; background: #0A0F1C; }
+  .thumb span { font: 500 12px Plex, sans-serif; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thumb:focus { outline: none; }
+  .thumb:focus-visible { outline: 1px dashed var(--muted); outline-offset: 2px; }
+  .thumb.current { border-color: var(--blue2); box-shadow: inset 0 0 0 1px var(--blue2); }
+  .thumb.current span { color: var(--ink); }
+  .thumb .n { color: var(--blue2); margin-right: 5px; font-variant-numeric: tabular-nums; }
+
+  /* pasek przewijania: cały film, ujęcia na przemian jaśniej i ciemniej, uwagi jako bursztynowe kreski */
+  #scrub { position: relative; height: 24px; background: var(--panel2); cursor: ew-resize; margin: 2px 0 6px; user-select: none; touch-action: none; }
+  #scrub .part { position: absolute; top: 0; bottom: 0; border-right: 1px solid var(--bg); }
+  #scrub .part:nth-child(odd) { background: var(--panel3); }
+  #scrub .part.current { background: rgba(110, 155, 255, .22); }
+  #scrub .tick { position: absolute; top: 0; height: 6px; background: var(--amber); }
+  #scrub-head { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); pointer-events: none; }
   #wave { position: relative; }
-  #wave ::part(region) { }
+  /* bieżąca klatka na fali: gruba linia z uchwytem nad regionami ujęć */
+  #wave ::part(cursor) { z-index: 10; box-shadow: 0 0 0 1px rgba(5, 8, 15, .7); }
+  #wave ::part(cursor)::before { content: ''; position: absolute; top: 0; left: 50%; margin-left: -7px; border: 7px solid transparent; border-top-color: #FFFFFF; }
   /* stała wysokość: pojawiający się komunikat nie może zmieniać rozmiaru kadru */
-  #msg { color: var(--amber); padding: 6px 0 0; height: 24px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  kbd { font: 11px 'Plex Mono', monospace; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
+  #msg { color: var(--amber); padding: 4px 0 0; height: 22px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  kbd { font: 500 12px Plex, sans-serif; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
+
+  #help { position: absolute; right: 14px; bottom: calc(100% + 8px); width: 380px; padding: 12px 14px; background: var(--panel2); border: 1px solid var(--line);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .5); z-index: 5; }
+  #help dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 8px 0 0; font-size: 13px; }
+  #help dt { text-align: right; }
+  #help dd { margin: 0; color: var(--muted); }
 </style>
 </head>
 <body>
 <header>
-  <a class="logo" href="https://zarobkilekarzy.pl/" target="_blank" rel="noopener" title="Generator filmów zarobkilekarzy.pl"><img src="/silnik/logo.svg" alt="zarobkilekarzy.pl"></a>
-  <h1 id="title">Odtwarzacz</h1>
-  <span id="wersja" class="mono"></span>
-  <span class="sep"></span>
-  <button id="src-live" class="on" title="kadr rysowany na żywo przez silnik — zmiana w film.js widać po przeładowaniu">na żywo</button>
-  <button id="src-mp4" title="gotowy plik z wynik/">plik MP4</button>
-  <select id="mp4" hidden></select>
-  <span class="sep"></span>
-  <button id="fmt-h" class="on">16:9</button>
-  <button id="fmt-v">pion</button>
-  <button id="sz" title="strefy TikToka i Shorts (pion)">strefy</button>
-  <span class="sep"></span>
-  <button id="subs" title="napisy na kadrze: PL → EN → CS (C)">napisy: wył.</button>
-  <span class="sep"></span>
-  <button id="rate">tempo 1×</button>
-  <button id="loop" title="pętla zaznaczonego fragmentu (L)">pętla</button>
-  <button id="reload" title="przeładuj film (R)">przeładuj</button>
-  <span id="time" class="mono">0:00.00</span>
+  <div class="brand">
+    <a class="logo" href="https://zarobkilekarzy.pl/" target="_blank" rel="noopener" title="Generator filmów zarobkilekarzy.pl"><img src="/silnik/logo.svg" alt="zarobkilekarzy.pl"></a>
+    <h1 id="title">Odtwarzacz</h1>
+    <span id="wersja" class="mono"></span>
+  </div>
+  <div class="grp">
+    <span class="label">kadr</span>
+    <div class="seg">
+      <button id="src-live" class="on" title="kadr rysowany na żywo przez silnik — zmiana w film.js widać po przeładowaniu (R)">na żywo</button>
+      <button id="src-mp4" title="gotowy plik z wynik/">plik MP4</button>
+    </div>
+    <select id="mp4" hidden></select>
+  </div>
+  <div class="grp">
+    <span class="label">format</span>
+    <div class="seg"><button id="fmt-h" class="on">16:9</button><button id="fmt-v">pion</button></div>
+    <button id="sz" title="strefy TikToka i Shorts (pion)">strefy</button>
+  </div>
+  <div class="grp">
+    <span class="label">tekst</span>
+    <button id="subs" title="napisy na kadrze: PL → EN → CS (C)">napisy: wył.</button>
+    <button id="tts" title="kwestie czyta syntezator systemu — do wyczucia tempa, zanim jest nagranie lektora">lektor syntez.: wył.</button>
+  </div>
+  <span class="spacer"></span>
+  <button id="reload" title="przeładuj film po zmianie kodu (R)">przeładuj</button>
 </header>
 <main>
   <div id="stage">
-    <div id="frame"><div id="caption"></div><div id="pins"></div></div>
+    <div id="frame"><div id="caption"></div><div id="still" hidden>pełny kadr ujęcia · ▶ gra od początku</div><div id="paused"><span>▶</span></div><div id="pins"></div></div>
   </div>
   <aside>
     <div class="head">
@@ -121,16 +173,45 @@
 </main>
 <footer>
   <div class="bar">
-    <button id="play" title="spacja">▶</button>
+    <button id="prev" class="icon" title="poprzednie ujęcie ([)">⏮</button>
+    <button id="play" class="play" title="start / pauza (spacja albo kliknięcie w kadr)">▶</button>
+    <button id="next" class="icon" title="następne ujęcie (])">⏭</button>
+    <span id="time" class="mono">0:00.00 / 0:00.00</span>
+    <span id="shot"></span>
+    <span class="spacer"></span>
+    <span class="label">tempo</span>
+    <select id="rate" title="prędkość odtwarzania">
+      <option value="0.25">0,25×</option><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="1.5">1,5×</option><option value="2">2×</option>
+    </select>
+    <button id="loop" title="pętla zaznaczonego fragmentu (L)">pętla</button>
     <button id="unsel" hidden title="Esc">usuń zaznaczenie</button>
     <button id="deluw" hidden title="Delete">usuń uwagę</button>
-    <span class="label">powiększenie</span>
-    <input id="zoom" type="range" min="0" max="300" value="0">
-    <span class="hint mono">przeciągnij po fali = nowa uwaga · przeciągnij <span style="color:var(--blue2)">znacznik</span> = nowy czas · <kbd>←</kbd><kbd>→</kbd> klatka · <kbd>⇧←</kbd><kbd>⇧→</kbd> sekunda · <kbd>N</kbd> uwaga tutaj · <kbd>Esc</kbd> bez zaznaczenia</span>
+    <span class="label">oś</span>
+    <input id="zoom" type="range" min="0" max="300" value="0" title="powiększenie fali dźwięku">
+    <button id="keys" title="skróty klawiszowe (?)">?</button>
   </div>
-  <div id="wave"></div>
+  <div id="strip"></div>
+  <div id="scrub" title="przeciągnij, żeby przewinąć"><div id="scrub-head"></div></div>
+  <div id="wave" title="przeciągnij po fali = nowa uwaga; przeciągnij niebieski znacznik = nowy czas"></div>
   <div id="timeline"></div>
   <div id="msg"></div>
+  <div id="help" hidden>
+    <span class="label">Skróty</span>
+    <dl>
+      <dt><kbd>spacja</kbd></dt><dd>start / pauza (albo kliknięcie w kadr)</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>klatka; z <kbd>⇧</kbd> — sekunda</dd>
+      <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>poprzednie / następne ujęcie</dd>
+      <dt>miniatury</dt><dd>klik = pełny kadr, ▶ gra od początku ujęcia · dwuklik = od razu gra</dd>
+      <dt>pasek pod nimi</dt><dd>przeciągnięcie = przewijanie</dd>
+      <dt>fala</dt><dd>przeciągnięcie = nowa uwaga do fragmentu</dd>
+      <dt><kbd>N</kbd></dt><dd>uwaga w bieżącym miejscu</dd>
+      <dt><kbd>P</kbd></dt><dd>pinezka: kliknij miejsce w kadrze</dd>
+      <dt><kbd>L</kbd></dt><dd>pętla zaznaczonego fragmentu</dd>
+      <dt><kbd>C</kbd></dt><dd>napisy: wył. → PL → EN → CS</dd>
+      <dt><kbd>R</kbd></dt><dd>przeładuj film po zmianie kodu</dd>
+      <dt><kbd>Esc</kbd> <kbd>Delete</kbd></dt><dd>bez zaznaczenia · usuń klikniętą uwagę</dd>
+    </dl>
+  </div>
 </footer>
 <script type="module" src="odtwarzacz.mjs"></script>
 </body>

@@ -3,7 +3,7 @@
 // (PROJEKT), potem w generatorze (ROOT: silnik/, odtwarzacz/, szablon/, node_modules/). Zapis tylko dwóch plików filmu:
 // POST /api/zapisz?film=filmy/<nazwa>&plik=uwagi.json|znaczniki.json (treść = JSON).
 //
-//   node silnik/serwer.mjs [--port 4471]   → http://127.0.0.1:4471/silnik/?film=szablon · /odtwarzacz/?film=…
+//   node silnik/serwer.mjs [--port 4471]   → http://127.0.0.1:4471/odtwarzacz/?film=szablon (podgląd, oś czasu, uwagi)
 // GET /api/wersja?film=… → { wersja } (git describe) · GET /api/pliki?film=… → MP4 z <film>/wynik/
 // GET /api/dzwiek?film=… → miks dźwięku dla odtwarzacza (eksport --tylko-dzwiek, gdy plik starszy od treści filmu)
 // GET /api/napisy?film=… → { pl, en, cs } adresy VTT (silnik/napisy.mjs, gdy brak plików albo są starsze od tekstów)
@@ -127,6 +127,8 @@ export function createServer() {
       execFile(process.execPath, [path.join(ROOT, 'silnik', 'eksport.mjs'), dir, '--tylko-dzwiek'], (e, _o, stderr) => (e ? res.writeHead(500).end(stderr || String(e)) : reply()));
       return;
     }
+    // jedno narzędzie: adres główny prowadzi do odtwarzacza (podgląd na żywo, oś czasu, uwagi)
+    if (url.pathname === '/') { res.writeHead(302, { location: '/odtwarzacz/?film=szablon' }).end(); return; }
     const p = plik(decodeURIComponent(url.pathname));
     const file = p && (url.pathname.endsWith('/') ? path.join(p, 'index.html') : p);
     if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404).end(); return; }
@@ -136,5 +138,5 @@ export function createServer() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const i = process.argv.indexOf('--port'), port = i > 0 ? +process.argv[i + 1] : 4471;
-  createServer().listen(port, '127.0.0.1', () => console.log(`http://127.0.0.1:${port}/silnik/?film=szablon  ·  /odtwarzacz/?film=szablon\nfilmy z: ${PROJEKT}`));
+  createServer().listen(port, '127.0.0.1', () => console.log(`http://127.0.0.1:${port}/odtwarzacz/?film=szablon\nfilmy z: ${PROJEKT}`));
 }

@@ -17,6 +17,7 @@ const SAFE = { x: 70, y: 430, from: 360, k: 0.77, right: 900 };
 // Motywy kadrów (noc / dzień / kobalt), linia EKG znaku i napisy marki — silnik/marka.mjs.
 const TH = window.MARKA.TH;
 const [NAZWA, NAZWA_PRZYROSTEK = ''] = window.MARKA.NAZWA, HASLO = window.MARKA.HASLO, KONTO = window.MARKA.KONTO;
+const NAZWA_LEKTOR = window.MARKA.NAZWA_LEKTOR ?? '';
 const F = { disp: '"Inter Tight", sans-serif', body: 'Plex, sans-serif', mono: '"Plex Mono", monospace' };
 
 // Supersampling do eksportu (?ss=2): kadr rysowany w 3840×2160, zmniejszany przy zapisie klatki.
@@ -324,26 +325,20 @@ function caption(t) {
 
 
 /* ---------- plansza końcowa (16:9 i pion) ---------- */
-function endCard(lt) {
-  const s = 180, k = outExpo(seg(lt, 0.1, 0.6));
-  mark(W / 2 - s / 2, 230, s, k);
-  const w1 = measure(NAZWA, 110, 500), w2 = measure(NAZWA_PRZYROSTEK, 110, 500);
+// k = ile linii znaku jest narysowane (endCard: linia rysuje się na wejściu; końcówka `ending`: znak już stoi)
+function card(lt, k) {
+  const L = VERT ? { s: 280, mark: 420, name: 940, fs: fitSize(NAZWA + NAZWA_PRZYROSTEK, 150, 500), haslo: 1080, hs: 72, handle: 1230, hz: 44 }
+    : { s: 180, mark: 230, name: 600, fs: 110, haslo: 720, hs: 56, handle: 820, hz: 30 };
+  mark(W / 2 - L.s / 2, L.mark, L.s, k);
+  const w1 = measure(NAZWA, L.fs, 500), w2 = measure(NAZWA_PRZYROSTEK, L.fs, 500);
   const x = W / 2 - (w1 + w2) / 2, a = seg(lt, 0.3, 0.5);
-  txt(NAZWA, x, 600, { size: 110, weight: 500, alpha: a });
-  txt(NAZWA_PRZYROSTEK, x + w1, 600, { size: 110, weight: 500, color: th.wordDim, alpha: a });
-  rise(HASLO, W / 2, 720, 56, lt, 0.55, { weight: 400, align: 'center' });
-  handle(lt, 820, 30);
+  txt(NAZWA, x, L.name, { size: L.fs, weight: 500, alpha: a, max: 9999 });
+  txt(NAZWA_PRZYROSTEK, x + w1, L.name, { size: L.fs, weight: 500, color: th.wordDim, alpha: a, max: 9999 });
+  rise(HASLO, W / 2, L.haslo, L.hs, lt, 0.55, { weight: 400, align: 'center' });
+  handle(lt, L.handle, L.hz);
 }
-function endCardV(lt) {
-  const s2 = 280, k = outExpo(seg(lt, 0.1, 0.6));
-  mark(W / 2 - s2 / 2, 420, s2, k);
-  const fs = fitSize(NAZWA + NAZWA_PRZYROSTEK, 150, 500), w1 = measure(NAZWA, fs, 500), w2 = measure(NAZWA_PRZYROSTEK, fs, 500);
-  const x = W / 2 - (w1 + w2) / 2, a = seg(lt, 0.3, 0.5);
-  txt(NAZWA, x, 940, { size: fs, weight: 500, alpha: a, max: 9999 });
-  txt(NAZWA_PRZYROSTEK, x + w1, 940, { size: fs, weight: 500, color: th.wordDim, alpha: a, max: 9999 });
-  rise(HASLO, W / 2, 1080, 72, lt, 0.55, { weight: 400, align: 'center' });
-  handle(lt, 1230, 44);
-}
+function endCard(lt) { card(lt, outExpo(seg(lt, 0.1, 0.6))); }
+function endCardV(lt) { card(lt, outExpo(seg(lt, 0.1, 0.6))); }
 /** znak serwisu X i nazwa konta, wyśrodkowane */
 function handle(lt, y, size) {
   if (!KONTO) return;
@@ -352,4 +347,80 @@ function handle(lt, y, size) {
   ctx.save(); ctx.globalAlpha = ha; ctx.fillStyle = th.ink;
   ctx.translate(x0, y - size * 0.86); ctx.scale(size / 24, size / 24); ctx.fill(X_LOGO); ctx.restore();
   txt(KONTO, x0 + size + gap, y, { size, weight: 500, font: F.mono, track: 0.04, color: th.ink, alpha: ha });
+}
+
+
+/* ---------- końcówka: linia EKG zamarza w znak marki ---------- */
+// `...ending()` na końcu SHOTS dokleja dwa ujęcia na kobalcie. Pierwsze: linia EKG biegnie przez kadr jak na
+// kardiomonitorze, kilka uderzeń z pikiem; gdy głowica mija miejsce znaku, linia zamarza (serce staje — ciągły ton)
+// i płynnie staje się znakiem: płaska linia grubieje w kwadrat, a ostatnie uderzenie zostaje w nim jako linia znaku.
+// Drugie: plansza — pod znakiem nazwa, hasło i konto, lektor czyta nazwę (NAZWA_LEKTOR z marki; kwestia pod tym samym
+// id w teksty.js filmu ma pierwszeństwo, '' = bez lektora). Dźwięk przynoszą same ujęcia (pole `sound`).
+// Opcje: ids (identyfikatory obu ujęć), beats (liczba uderzeń; ostatnie zamarza w znaku).
+function ending(o = {}) {
+  const { ids = ['serce', 'plansza'], beats = 3 } = o;
+  const BEAT = 0.8, FREEZE = 0.22, MORPH = 0.75;
+  const times = Array.from({ length: beats }, (_, k) => 0.35 + k * BEAT), tf = times.at(-1) + FREEZE;
+  // znak stoi tam, gdzie na planszy (card); linia biegnie na wysokości linii znaku, ostatni wierzchołek trafia w znak
+  const s = VERT ? 280 : 180, mx = W / 2 - s / 2, my = VERT ? 420 : 230, u = s / 24;
+  const base = ECG[0][1], y0 = my + base * u, R = ECG.reduce((a, p) => (p[1] < a[1] ? p : a)), xR = mx + R[0] * u;
+  const i0 = ECG.findIndex((p) => p[1] !== base) - 1, i1 = ECG.findLastIndex((p) => p[1] !== base) + 1;
+  // głowica startuje przy lewej krawędzi ekranu (pion: zza krawędzi, żeby uderzenia nie stały za gęsto)
+  const x0 = VERT ? -120 : 0, v = (xR - x0) / times.at(-1), LW = VERT ? 7 : 6;
+  // linia: zespoły QRS znaku w miejscach uderzeń; sy = skala w pionie (na monitorze 2u, w znaku u)
+  const pts = (sy) => [[x0, y0], ...times.flatMap((t) => ECG.slice(i0, i1 + 1)
+    .map(([a, b]) => [xR - v * (times.at(-1) - t) + (a - R[0]) * u, y0 + (b - base) * sy])), [x0 + W, y0]];
+  const stroke = (p, color, lw, alpha = 1) => {
+    ctx.save(); ctx.globalAlpha *= alpha; ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'miter'; ctx.miterLimit = 5;
+    ctx.beginPath(); p.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); ctx.restore();
+  };
+  const clip = (x, y, w, h) => { ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); };
+  const yAt = (p, x) => { const i = p.findIndex((q) => q[0] >= x); if (i <= 0) return y0; const [a, b] = [p[i - 1], p[i]]; return b[0] === a[0] ? b[1] : lerp(a[1], b[1], (x - a[0]) / (b[0] - a[0])); };
+  // ślad monitora do głowicy hx: przygaszony, najświeższy odcinek jaśnieje ku głowicy, głowica = mały kwadrat
+  function trace(hx, alpha) {
+    const p = pts(2 * u), tail = VERT ? 200 : 320;
+    clip(x0 - LW, 0, hx - x0 + LW, H);
+    stroke(p, th.ink, LW, 0.5 * alpha);
+    clip(hx - tail, 0, tail, H);
+    const g = ctx.createLinearGradient(hx - tail, 0, hx, 0);
+    g.addColorStop(0, withAlpha(th.ink, 0)); g.addColorStop(1, th.ink);
+    stroke(p, g, LW, alpha);
+    ctx.restore(); ctx.restore();
+    rect(hx - LW * 1.3, yAt(p, hx) - LW * 1.3, LW * 2.6, LW * 2.6, th.ink, alpha);
+  }
+
+  function monitor(lt) {
+    const hf = x0 + v * tf;
+    if (lt < tf) { trace(x0 + v * lt, 1); return; }
+    const k = inOut(seg(lt, tf + 0.1, tf + 0.1 + MORPH));
+    if (k >= 1) { mark(mx, my, s, 1); return; }
+    // poza znakiem zamarznięty ślad gaśnie; w znaku rozjaśnia się do pełnej bieli, a linia (dorysowana do prawej
+    // krawędzi) grubieje w kwadrat, w którym zostaje linia znaku
+    const on = seg(k, 0, 0.3);
+    clip(0, 0, mx, H); trace(hf, 1 - k); ctx.restore();
+    clip(mx + s, 0, W, H); trace(hf, 1 - k); ctx.restore();
+    clip(mx, 0, s, H); trace(hf, 1 - on); ctx.restore();
+    const fill = lerp(Math.min(hf, mx + s), mx + s, k), sy = lerp(2 * u, u, k), lw = lerp(LW, 2 * u, k);
+    const top = lerp(y0 - LW / 2, my, k), h = lerp(LW, s, k);
+    clip(mx, 0, fill - mx, H); stroke(pts(sy), th.mark, lw, on); ctx.restore();
+    rect(mx, top, fill - mx, h, th.mark, on);
+    clip(mx, top, fill - mx, h); stroke(pts(sy), th.markLine, lw, seg(k, 0, 0.35)); ctx.restore();
+  }
+
+  return [
+    { id: ids[0], d: tf + 0.1 + MORPH + 0.25, theme: 'blue', bare: true, noCap: true, src: '', group: ids[0],
+      draw: monitor, drawV: monitor,
+      // piki na uderzeniach; od zamarznięcia ciągły ton, który cichnie z wejściem lektora na planszy
+      sound(d) {
+        const c0 = IDX[ids[1]] != null ? T(ids[1]) - T(ids[0]) : d;
+        return { piks: times, tones: [{ from: tf, to: c0 + 0.5, f: [700, 350], g: 0.06, in: 0.008, out: 0.6 }] };
+      } },
+    { id: ids[1], d: 2.6, theme: 'blue', bare: true, noCap: true, src: '', group: ids[0], vo: NAZWA_LEKTOR,
+      draw: (lt) => card(lt + 0.25, 1), drawV: (lt) => card(lt + 0.25, 1) },
+  ];
+}
+/** Kolor #RRGGBB z przezroczystością (gradienty śladu); inne zapisy bez zmian. */
+function withAlpha(c, a) {
+  const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(c);
+  return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${a})` : c;
 }

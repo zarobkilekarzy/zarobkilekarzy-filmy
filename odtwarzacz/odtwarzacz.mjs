@@ -1,5 +1,6 @@
-// Odtwarzacz montażowy: kadr (silnik na żywo albo gotowy MP4) + oś czasu wavesurfer z ujęciami, uwagami
-// i nazwanymi znacznikami. Uwagi → <film>/uwagi.json, przesunięte znaczniki → <film>/znaczniki.json (przez serwer).
+// Odtwarzacz montażowy — jedyne narzędzie do oglądania filmu (/silnik/ bez parametrów tu przekierowuje): kadr (silnik
+// na żywo albo gotowy MP4), miniatury ujęć, pasek przewijania i oś czasu wavesurfer z ujęciami, uwagami i nazwanymi
+// znacznikami. Uwagi → <film>/uwagi.json, przesunięte znaczniki → <film>/znaczniki.json (przez serwer).
 // Uwaga jest przypięta do ujęcia (`ujecie` + `od`/`do` od jego cięcia), więc zostaje na miejscu po zmianie montażu.
 import WaveSurfer from '/node_modules/wavesurfer.js/dist/wavesurfer.esm.js';
 import RegionsPlugin from '/node_modules/wavesurfer.js/dist/plugins/regions.esm.js';
@@ -9,8 +10,15 @@ const q = new URLSearchParams(location.search);
 const FILM = (q.get('film') ?? 'szablon').replace(/^\/+|\/+$/g, '');
 const FPS = 30;
 const $ = (id) => document.getElementById(id);
-const S = { vert: q.get('v') === '1', sz: false, src: 'live', film: null, uwagi: [], poprawki: {}, rate: 1, loop: false, sel: null,
-  pinArmed: false, pending: null, t: 0, wersja: '—', subs: { lang: null, urls: null, cues: {} } };
+const S = { vert: q.get('v') === '1', sz: q.get('sz') === '1', src: 'live', film: null, uwagi: [], poprawki: {}, rate: 1, loop: false, sel: null,
+  pinArmed: false, pending: null, t: Number(/t=([\d.]+)/.exec(location.hash)?.[1] ?? 0), wersja: '—', tts: false, curShot: null,
+  subs: { lang: null, urls: null, cues: {} } };
+const ICON = {
+  play: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11L12 7z" fill="currentColor"/></svg>',
+  pause: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5h3v11H3zM8 1.5h3v11H8z" fill="currentColor"/></svg>',
+  prev: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 1.5h2v11H2zM12 1.5v11L4.5 7z" fill="currentColor"/></svg>',
+  next: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M10 1.5h2v11h-2zM2 1.5v11L9.5 7z" fill="currentColor"/></svg>',
+};
 
 const msg = (s = '') => { $('msg').textContent = s; };
 const fmtT = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
@@ -23,6 +31,7 @@ async function save(plik, data) {
 
 /* ---------- ujęcia i czas ---------- */
 const shots = () => S.film?.shots ?? [];
+const dur = () => S.film?.dur ?? ws?.getDuration() ?? 0;
 const shotAt = (t) => shots().find((s) => t >= s.t0 && t < s.t1) ?? shots().at(-1);
 const shotById = (id) => shots().find((s) => s.id === id);
 const absOf = (u) => { const s = shotById(u.ujecie); return s ? [s.t0 + u.od, s.t0 + u.do] : null; };
@@ -40,7 +49,13 @@ function fitFrame() {
 }
 new ResizeObserver(fitFrame).observe($('stage'));
 function frameWin() { return iframe?.contentWindow; }
-function drawFrame(t) { if (S.src === 'live') frameWin()?.renderAt?.(t); }
+// Podgląd ujęcia (klik w rozdział): głowica na początku ujęcia, a kadr pokazuje jego pełną klatkę — do pierwszego
+// ruchu głowicy albo „play”, które gra ujęcie od początku.
+function drawFrame(t) {
+  if (S.still && (Math.abs(t - S.still.at) > 0.02 || ws?.isPlaying())) S.still = null;
+  $('still').hidden = !S.still;
+  if (S.src === 'live') frameWin()?.renderAt?.(S.still?.show ?? t);
+}
 
 // Film z archiwum (własny kod w proto/): ta sama strona prototypu, bez jej pasków; ujęcia z window.SHOTS.
 const ARCHIVE_CSS = '.bar, #vo { display: none !important; } #wrap { max-width: none !important; } html, body { background: transparent !important; overflow: hidden; }';
@@ -61,10 +76,113 @@ async function loadLive() {
         const st = w.document.createElement('style'); st.textContent = ARCHIVE_CSS; w.document.head.append(st);
         S.film = { ...w.FILM, znaczniki: [], shots: (w.SHOTS ?? []).map((s, n) => ({ id: s.id ?? String(n), n, t0: s.t0, t1: s.t1 })) };
       }
+      buildStrip(); renderScrub();
+      $('tts').disabled = !S.film.lines?.some((l, n) => l && !recorded(n));
       drawFrame(S.t); return true;
     }
   }
   msg('Film się nie załadował.'); return false;
+}
+
+/* ---------- miniatury ujęć i pasek przewijania ---------- */
+// Miniatura = pełny kadr ujęcia tuż przed cięciem, rysowany przez silnik w ramce.
+function buildStrip() {
+  const w = frameWin(), src = w?.document.getElementById('c');
+  if (!w?.renderAt || !src) return;
+  const h = 54, iw = Math.round((h * src.width) / src.height), cv = document.createElement('canvas');
+  cv.height = h * 2; cv.width = iw * 2;
+  const c = cv.getContext('2d');
+  c.imageSmoothingQuality = 'high';
+  const items = shots().map((s) => {
+    w.renderAt(Math.max(s.t0, s.t1 - 0.05));
+    c.drawImage(src, 0, 0, cv.width, cv.height);
+    const el = document.createElement('button');
+    el.className = 'thumb'; el.dataset.id = s.id;
+    el.title = `${s.n} ${s.id} · ${fmtT(s.t0)}–${fmtT(s.t1)} (${(s.t1 - s.t0).toFixed(1)} s)\nklik: pełny kadr, ▶ gra od początku · dwuklik: od razu gra`;
+    el.innerHTML = `<img alt="" src="${cv.toDataURL('image/jpeg', 0.85)}" style="width:${iw}px"><span style="max-width:${Math.max(iw, 64)}px"><span class="n">${s.n}</span>${s.id}</span>`;
+    // klik: głowica na początku ujęcia, a kadr = pełny kadr z miniatury (pierwsza klatka bywa pusta — elementy dopiero
+    // wchodzą); „play” gra ujęcie od początku. Dwuklik: od razu odtwarzanie.
+    el.onclick = () => { ws?.pause(); S.still = { at: s.t0 + 0.001, show: Math.max(s.t0, s.t1 - 0.05) }; seek(s.t0 + 0.001); };
+    el.ondblclick = () => { seek(s.t0 + 0.001); setTimeout(() => ws?.play(), 80); };
+    return el;
+  });
+  $('strip').replaceChildren(...items);
+  w.renderAt(S.t);
+  S.curShot = null; highlight(S.t);
+}
+// Pasek przewijania: cały film, ujęcia na przemian, uwagi jako kreski. Przeciąganie przewija (kadr rysuje się od razu).
+function renderScrub() {
+  const box = $('scrub'), head = $('scrub-head'), d = dur();
+  box.querySelectorAll('.part, .tick').forEach((e) => e.remove());
+  if (!d) return;
+  const pct = (x) => `${(x / d) * 100}%`;
+  for (const s of shots()) {
+    const el = document.createElement('div');
+    el.className = 'part'; el.dataset.id = s.id; el.title = `${s.n} ${s.id}`;
+    el.style.left = pct(s.t0); el.style.width = pct(s.t1 - s.t0);
+    box.insertBefore(el, head);
+  }
+  for (const u of visible()) {
+    const a = absOf(u);
+    if (!a) continue;
+    const el = document.createElement('div');
+    el.className = 'tick'; el.style.left = pct(a[0]); el.style.width = `max(3px, ${pct(a[1] - a[0])})`;
+    box.insertBefore(el, head);
+  }
+  S.curShot = null; highlight(S.t);
+}
+{
+  let wasPlaying = false;
+  const box = $('scrub'), at = (e) => { const b = box.getBoundingClientRect(); return Math.min(dur(), Math.max(0, ((e.clientX - b.left) / b.width) * dur())); };
+  box.addEventListener('pointerdown', (e) => { if (!ws) return; wasPlaying = ws.isPlaying(); ws.pause(); box.setPointerCapture(e.pointerId); seek(at(e)); });
+  box.addEventListener('pointermove', (e) => { if (box.hasPointerCapture(e.pointerId)) seek(at(e)); });
+  box.addEventListener('pointerup', (e) => { box.releasePointerCapture(e.pointerId); if (wasPlaying) ws.play(); });
+}
+/** Głowica paska, bieżące ujęcie na pasku i w miniaturach; przy zmianie ujęcia w trakcie grania — syntezator lektora. */
+function highlight(t) {
+  const d = dur();
+  if (d) $('scrub-head').style.left = `${(t / d) * 100}%`;
+  const s = shotAt(t);
+  if (!s || s.id === S.curShot) return;
+  S.curShot = s.id;
+  document.querySelectorAll('.thumb, #scrub .part').forEach((el) => el.classList.toggle('current', el.dataset.id === s.id));
+  document.querySelector(`.thumb[data-id="${CSS.escape(s.id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (S.tts && ws?.isPlaying()) speak(s.n);
+}
+/** Poprzednie / następne ujęcie; „wstecz” najpierw wraca na początek bieżącego (jak w odtwarzaczach). */
+function jump(dir) {
+  const cur = shotAt(S.t);
+  if (!cur) return;
+  const i = dir < 0 && S.t - cur.t0 > 0.25 ? cur.n : cur.n + dir;
+  const s = shots()[Math.max(0, Math.min(shots().length - 1, i))];
+  seek(s.t0 + 0.001);
+}
+
+/* ---------- syntezator lektora (przed nagraniem: do wyczucia tempa) ---------- */
+// Czyta kwestię ujęcia na jego początku — tylko te, których nie ma w nagraniu (nagranie gra w ścieżce dźwięku).
+const recorded = (n) => { const s = shots()[n]; return !!s && (S.film?.voice ?? []).some((v) => v.from >= s.t0 && v.from < s.t1); };
+function speak(n) {
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const line = S.film?.lines?.[n];
+  if (!line || recorded(n)) return;
+  const u = new SpeechSynthesisUtterance(line);
+  u.lang = 'pl-PL'; u.rate = Math.min(2, S.rate * 1.1);
+  const v = speechSynthesis.getVoices().find((x) => x.lang?.startsWith('pl'));
+  if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+function setPlaying(on) {
+  $('play').innerHTML = on ? ICON.pause : ICON.play;
+  if (!on) window.speechSynthesis?.cancel();
+  else if (S.tts) speak(shotAt(S.t)?.n);
+}
+/** Krótki znak na kadrze po kliknięciu (start / pauza). */
+function flash(icon) {
+  const el = $('paused');
+  el.querySelector('span').innerHTML = icon.replace('width="14" height="14"', 'width="28" height="28"');
+  el.classList.add('show');
+  clearTimeout(flash.t); flash.t = setTimeout(() => el.classList.remove('show'), 450);
 }
 
 /* ---------- oś czasu ---------- */
@@ -88,7 +206,7 @@ async function buildWave() {
     msg();
   }
   ws = WaveSurfer.create({
-    container: '#wave', height: 92, waveColor: '#56627A', progressColor: '#6E9BFF', cursorColor: '#EEF2F8', cursorWidth: 1,
+    container: '#wave', height: 92, waveColor: '#56627A', progressColor: '#6E9BFF', cursorColor: '#FFFFFF', cursorWidth: 2,
     normalize: true, ...opts,
     plugins: [regions, TimelinePlugin.create({ container: '#timeline', height: 18, style: { color: '#8691A5', fontSize: '11px' } })],
   });
@@ -98,8 +216,8 @@ async function buildWave() {
   ws.on('seeking', onTime);
   // po przebudowie osi: scena ma znowu stałą wysokość; mierzenie w trakcie (bez fali) dawało za duży kadr
   requestAnimationFrame(fitFrame);
-  ws.on('play', () => { $('play').textContent = '❚❚'; });
-  ws.on('pause', () => { $('play').textContent = '▶'; });
+  ws.on('play', () => { S.still = null; drawFrame(S.t); setPlaying(true); });
+  ws.on('pause', () => setPlaying(false));
   regions.enableDragSelection({ color: 'rgba(237,181,74,0.30)' });
   regions.on('region-created', (r) => { if (!adding) openForm(r.start, r.end, r); });
   regions.on('region-updated', onRegionMoved);
@@ -111,10 +229,13 @@ async function buildWave() {
   });
 }
 
-function label(text, color) {
+// Podpis na fali: numer ujęcia i uwagi u góry (nazwy ujęć są w miniaturach), znaczniki u dołu w trzech rzędach
+// (`row`) — inaczej nachodziły na siebie.
+function label(text, color, row = -1) {
   const el = document.createElement('div');
   el.textContent = text;
-  el.style.cssText = `font: 500 10px 'Plex Mono', monospace; letter-spacing: .05em; color: ${color}; padding: 2px 4px; white-space: nowrap; pointer-events: none;`;
+  el.style.cssText = `font: 500 11px Plex, sans-serif; color: ${color}; padding: 2px 4px; white-space: nowrap; pointer-events: none;
+    ${row >= 0 ? `position: absolute; bottom: ${row * 13}px; left: 0;` : 'max-width: 100%; overflow: hidden; text-overflow: ellipsis;'}`;
   return el;
 }
 function paintRegions() {
@@ -123,7 +244,7 @@ function paintRegions() {
   regions.clearRegions();
   shots().forEach((s, i) => {
     const r = regions.addRegion({ id: `s-${s.id}`, start: s.t0, end: s.t1, drag: false, resize: false,
-      color: i % 2 ? 'rgba(110,155,255,0.10)' : 'rgba(110,155,255,0.04)', content: label(`${s.n} ${s.id}`, '#8691A5') });
+      color: i % 2 ? 'rgba(110,155,255,0.10)' : 'rgba(110,155,255,0.04)', content: label(`${s.n}`, '#8691A5') });
     r.element.style.pointerEvents = 'none';
   });
   visible().forEach((u, i) => {
@@ -132,10 +253,11 @@ function paintRegions() {
     regions.addRegion({ id: `u-${u.id}`, start: a[0], end: Math.max(a[1], a[0] + 0.08), drag: true, resize: true,
       color: uwagaColor(u), content: label(`${i + 1}`, '#EDB54A') });
   });
-  for (const z of S.film?.znaczniki ?? []) {
-    regions.addRegion({ id: `z-${z.name}`, start: z.t, drag: true, resize: false, color: '#6E9BFF', content: label(z.name, '#6E9BFF') });
-  }
+  (S.film?.znaczniki ?? []).forEach((z, i) => {
+    regions.addRegion({ id: `z-${z.name}`, start: z.t, drag: true, resize: false, color: '#6E9BFF', content: label(z.name, '#6E9BFF', i % 3) });
+  });
   adding = false;
+  renderScrub();
   // zaznaczona uwaga po przerysowaniu: nowy obiekt regionu
   if (S.sel?.uwaga) {
     const r = regions.getRegions().find((x) => x.id === `u-${S.sel.uwaga.id}`);
@@ -190,15 +312,18 @@ function seek(t) {
 function flushSeek() {
   if (seekTo == null) return;
   const t = seekTo; seekTo = null; seekBusy = true;
-  ws.setTime(t);
+  ws?.setTime(t);
   setTimeout(() => { seekBusy = false; flushSeek(); }, 60);
 }
 
 function onTime(t) {
   S.t = t;
-  $('time').textContent = `${fmtT(t)} · ${shotAt(t)?.id ?? ''}`;
-  if (S.loop && S.sel && ws.isPlaying() && t >= S.sel.region.end) ws.setTime(S.sel.region.start);
+  const s = shotAt(t);
+  $('time').textContent = `${fmtT(t)} / ${fmtT(dur())}`;
+  $('shot').textContent = s ? `ujęcie ${s.n} · ${s.id}` : '';
+  if (S.loop && S.sel && ws?.isPlaying() && t >= S.sel.region.end) ws.setTime(S.sel.region.start);
   drawFrame(t);
+  highlight(t);
   renderPins();
   renderCaption();
   document.querySelectorAll('.uwaga').forEach((el) => {
@@ -243,7 +368,7 @@ function renderList() {
     el.innerHTML = `<div class="meta"><span class="mono" style="color:var(--amber)">${i + 1}</span>
       <span class="mono">${a ? fmtT(a[0]) : 'ujęcia nie ma'}</span><span class="chip">${u.ujecie}</span><span class="chip">${u.rodzaj}</span>
       ${u.pinezka ? '<span class="chip">pinezka</span>' : ''}</div><div class="txt"></div>
-      ${u.rozwiazanie ? `<div class="mono" style="color:var(--ok);margin-top:4px">✓ ${u.rozwiazanie}</div>` : ''}
+      ${u.rozwiazanie ? `<div style="color:var(--ok);margin-top:4px">✓ ${u.rozwiazanie}</div>` : ''}
       <div class="act"><button data-a="stan">${u.stan === 'zrobiona' ? 'otwórz ponownie' : 'zrobione'}</button><button data-a="del">usuń</button></div>`;
     el.querySelector('.txt').textContent = u.tekst;
     el.onclick = async (e) => {
@@ -268,14 +393,20 @@ function renderPins() {
     el.title = u.tekst; box.append(el);
   });
 }
+// Kliknięcie w kadr: start / pauza; z uzbrojoną pinezką — miejsce nowej uwagi.
 $('pins').addEventListener('click', (e) => {
-  if (!S.pinArmed) return;
+  if (!S.pinArmed) {
+    if (!ws) return;
+    const willPlay = !ws.isPlaying();
+    ws.playPause(); flash(willPlay ? ICON.play : ICON.pause);
+    return;
+  }
   const b = $('pins').getBoundingClientRect();
   const pin = { x: round3((e.clientX - b.left) / b.width), y: round3((e.clientY - b.top) / b.height), format: S.vert ? 'pion' : '16:9' };
   setPin(false); ws.pause();
   openForm(S.t, S.t + 0.5, null, pin);
 });
-function setPin(on) { S.pinArmed = on; $('pins').classList.toggle('armed', on); $('pin').classList.toggle('on', on); $('pins').style.pointerEvents = on ? 'auto' : 'none'; }
+function setPin(on) { S.pinArmed = on; $('pins').classList.toggle('armed', on); $('pin').classList.toggle('on', on); }
 
 /* ---------- napisy na kadrze (VTT z silnik/napisy.mjs, generowane przez serwer, gdy ich brak) ---------- */
 const LANGS = ['pl', 'en', 'cs'];
@@ -295,14 +426,14 @@ async function loadSubs() {
   msg();
 }
 async function setSubs(lang) {
-  if (lang && !S.subs.cues[lang]) S.subs.cues[lang] = parseVtt(await (await fetch(S.subs.urls[lang], { cache: 'no-store' })).text());
+  if (lang && !S.subs.cues[lang]) S.subs.cues[lang] = S.subs.urls[lang] ? parseVtt(await (await fetch(S.subs.urls[lang], { cache: 'no-store' })).text()) : [];
   S.subs.lang = lang;
   $('subs').textContent = `napisy: ${lang ? lang.toUpperCase() : 'wył.'}`; toggle('subs', !!lang);
   renderCaption();
 }
 async function cycleSubs() {
   if (!S.subs.urls) await loadSubs();
-  const avail = LANGS.filter((l) => S.subs.urls[l]);
+  const avail = LANGS.filter((l) => S.subs.urls[l] || (l === 'pl' && S.film?.lines?.some((x, n) => x && !recorded(n))));
   if (!avail.length) { msg('Brak napisów: film nie ma nagrania lektora z tekstem (FILM.voice).'); return; }
   const order = [null, ...avail], next = order[(order.indexOf(S.subs.lang) + 1) % order.length];
   const missing = LANGS.filter((l) => !S.subs.urls[l]);
@@ -310,11 +441,13 @@ async function cycleSubs() {
   await setSubs(next);
 }
 function renderCaption() {
-  const c = S.subs.lang && S.subs.cues[S.subs.lang]?.find((x) => S.t >= x.from && S.t < x.to);
+  let c = S.subs.lang && S.subs.cues[S.subs.lang]?.find((x) => S.t >= x.from && S.t < x.to);
+  // kwestia bez nagrania: cały tekst przez czas ujęcia (szacunek — czasy zdań da dopiero nagranie lektora)
+  if (!c && S.subs.lang === 'pl') { const s = shotAt(S.t), line = s && !recorded(s.n) && S.film?.lines?.[s.n]; if (line) c = { text: line, est: true }; }
   const box = $('caption');
   if (box.dataset.text === (c?.text ?? '')) return;
   box.dataset.text = c?.text ?? ''; box.innerHTML = '';
-  if (c) { const sp = document.createElement('span'); sp.textContent = c.text; box.append(sp); }
+  if (c) { const sp = document.createElement('span'); sp.textContent = c.text; sp.classList.toggle('est', !!c.est); box.append(sp); }
 }
 
 /* ---------- sterowanie ---------- */
@@ -336,7 +469,14 @@ async function setFormat(vert) {
 $('fmt-h').onclick = () => setFormat(false);
 $('fmt-v').onclick = () => setFormat(true);
 $('sz').onclick = async () => { S.sz = !S.sz; toggle('sz', S.sz); if (S.src === 'live') await loadLive(); };
-$('rate').onclick = () => { S.rate = S.rate === 1 ? 0.5 : S.rate === 0.5 ? 0.25 : 1; ws?.setPlaybackRate(S.rate); $('rate').textContent = `tempo ${S.rate}×`; };
+$('rate').onchange = () => { S.rate = Number($('rate').value); ws?.setPlaybackRate(S.rate); $('rate').blur(); };
+$('prev').onclick = () => jump(-1);
+$('next').onclick = () => jump(1);
+$('tts').onclick = () => {
+  S.tts = !S.tts; toggle('tts', S.tts); $('tts').textContent = `lektor syntez.: ${S.tts ? 'wł.' : 'wył.'}`;
+  if (!S.tts) window.speechSynthesis?.cancel(); else if (ws?.isPlaying()) speak(shotAt(S.t)?.n);
+};
+$('keys').onclick = () => { $('help').hidden = !$('help').hidden; toggle('keys', !$('help').hidden); };
 $('loop').onclick = () => { S.loop = !S.loop; toggle('loop', S.loop); };
 $('reload').onclick = reload;
 $('pin').onclick = () => setPin(!S.pinArmed);
@@ -371,7 +511,8 @@ document.addEventListener('keydown', (e) => {
   const keys = { ' ': () => ws?.playPause(), arrowright: () => ws && seek(Math.min(ws.getDuration(), now + step)),
     arrowleft: () => ws && seek(Math.max(0, now - step)), n: () => { ws?.pause(); openForm(now, now + 1); },
     p: () => setPin(!S.pinArmed), l: () => $('loop').click(), r: () => reload(), c: () => cycleSubs(),
-    escape: () => { clearSelection(); setPin(false); },
+    '[': () => jump(-1), ']': () => jump(1), home: () => seek(0), end: () => seek(Math.max(0, dur() - 0.05)), '?': () => $('keys').click(),
+    escape: () => { clearSelection(); setPin(false); $('help').hidden = true; toggle('keys', false); },
     delete: () => S.sel?.uwaga && deleteUwaga(S.sel.uwaga), backspace: () => S.sel?.uwaga && deleteUwaga(S.sel.uwaga) };
   // preventDefault: inaczej litera skrótu trafia do pola uwagi, które właśnie dostało fokus
   if (keys[k]) { e.preventDefault(); keys[k](); }
@@ -380,7 +521,8 @@ document.addEventListener('keydown', (e) => {
 /* ---------- start ---------- */
 $('title').textContent = FILM.split('/').at(-1);
 document.title = `Odtwarzacz — ${FILM.split('/').at(-1)}`;
-toggle('fmt-h', !S.vert); toggle('fmt-v', S.vert);
+toggle('fmt-h', !S.vert); toggle('fmt-v', S.vert); toggle('sz', S.sz);
+$('play').innerHTML = ICON.play; $('prev').innerHTML = ICON.prev; $('next').innerHTML = ICON.next;
 fitFrame();
 setPin(false);
 S.wersja = (await getJSON(`/api/wersja?film=${encodeURIComponent(FILM)}`, {})).wersja ?? '—';

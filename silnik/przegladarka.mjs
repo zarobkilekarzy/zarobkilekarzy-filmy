@@ -40,7 +40,8 @@ export function filmDir(arg) {
 /** Otwiera film w osobnym Chromium. params: { film, archive?, v, ss, sz } → { evaluate, close } */
 export async function openFilm(params) {
   const port = await ensureServer();
-  const q = new URLSearchParams({ ss: String(params.ss ?? 1) });
+  // render=1: sam silnik (bez tego /silnik/ przekierowuje człowieka do odtwarzacza)
+  const q = new URLSearchParams({ ss: String(params.ss ?? 1), render: '1' });
   if (!params.archive) q.set('film', params.film);
   if (params.v) q.set('v', '1');
   if (params.sz) q.set('sz', '1');
@@ -49,7 +50,10 @@ export async function openFilm(params) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'film-chromium-'));
   // --disable-gpu: rasteryzacja programowa. Z GPU klatka zależała od historii renderu (pamięć glifów):
   // ta sama chwila wychodziła inaczej w filmie i w klatce kontrolnej, a render równoległy różnił się od zwykłego.
+  // --use-mock-keychain, --password-store=basic: świeży profil nie sięga do pęku kluczy systemu (na macOS każde
+  // uruchomienie pytało o dostęp do „Chromium Safe Storage”).
   const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
+    '--use-mock-keychain', '--password-store=basic',
     '--no-first-run', '--no-default-browser-check', '--mute-audio', '--hide-scrollbars',
     '--force-device-scale-factor=1', '--window-size=1920,1200', ...(process.env.CHROME_FLAGS?.split(' ').filter(Boolean) ?? []), 'about:blank'], { stdio: 'ignore' });
   const close = () => {

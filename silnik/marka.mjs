@@ -14,6 +14,8 @@ const EKG = 'M0 14H7.5L10 5.5 13.5 18.5 15.5 14H24';
 export const NAZWA = ['zarobkilekarzy', '.pl'];
 export const HASLO = 'Każda liczba ma źródło.';
 export const KONTO = '@ZarobkiLekarzy';
+// Jak lektor czyta nazwę na planszy końcówki (`ending`); '' = plansza bez lektora
+export const NAZWA_LEKTOR = 'Zarobki lekarzy kropka pe el.';
 
 export const TH = {
   dark: { bg: '#0A0F1C', ink: C.nInk, muted: C.nMuted, accent: C.nBlue, line: 'rgba(238,242,248,0.16)',

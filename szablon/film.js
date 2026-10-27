@@ -78,13 +78,15 @@ const SHOTS = [
       rise('Jedna suma.', M, 640 + size * 1.25, size, lt, Z('suma'));
       rise('Anonimowo.', M, 640 + size * 2.5, size, lt, Z('anonimowo'), { weight: 400 });
     } },
-  { id: 'plansza', d: 3.5, theme: 'blue', bare: true, src: '', draw: endCard, drawV: endCardV },
+  // końcówka marki: linia EKG zamarza w znak, plansza z nazwą czytaną przez lektora (ujęcia 'serce' i 'plansza')
+  ...ending(),
 ];
 
 /* ---------- dźwięk ---------- */
 // Wywoływane po ułożeniu ujęć: T('id') = początek ujęcia, T('id') + Z('znacznik') = chwila znacznika.
-// TICKS: [{ t, f: [Hz…], g }] — krótkie tony (np. tykanie), PIKS: [t…] — pik monitora (700 + 350 Hz).
+// TICKS: [{ t, f: [Hz…], g }] — krótkie tony (np. tykanie), PIKS: [t…] — pik monitora (700 + 350 Hz),
+// TONES: [{ from, to, f: [Hz…], g }] — tony ciągłe. Końcówka (`ending`) przynosi własne piki i ton.
 // Eksport ścisza wszystko pod mową lektora (ok. −7 dB) i normalizuje całość do −16 LUFS.
 function sound() {
-  return { TICKS: [], PIKS: [0.02, T('plansza') + 0.1] };
+  return { TICKS: [], PIKS: [0.02] };
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Eksport filmu do MP4: silnik renderuje każdą klatkę w Chromium bez okna (window.capture / captureBlur → PNG),
-// dźwięk (FILM.ticks, FILM.piks) syntetyzuje ten skrypt, lektora (FILM.voice) dokłada ffmpeg; całość −16 LUFS.
+// dźwięk (FILM.ticks, FILM.piks, FILM.tones) syntetyzuje ten skrypt, lektora (FILM.voice) dokłada ffmpeg; całość −16 LUFS.
 // Pliki wideo idą do <film>/wynik/ (poza gitem), z wersją z gita w nazwie.
 //
 //   node silnik/eksport.mjs filmy/<nazwa>                 → 16:9, 1080p60, supersampling ×3, motion blur 8, crf 12 (X)
@@ -120,7 +120,15 @@ function pik(t, gain) {
   }
 }
 for (const k of FILM.ticks) tick(k.t, k.f, k.g * 1.6);
-for (const t of FILM.piks) pik(t, 0.12);
+for (const p of FILM.piks) pik(p.t ?? p, 0.12 * (p.g ?? 1));
+// ton ciągły (np. asystolia w końcówce): faza od początku filmu, więc tony stykające się na cięciu nie trzaskają
+for (const k of FILM.tones ?? []) {
+  const i0 = Math.max(0, Math.round(k.from * RATE)), i1 = Math.min(samples, Math.round(k.to * RATE));
+  for (let i = i0; i < i1; i++) {
+    const t = i / RATE, env = k.g * Math.max(0, Math.min(1, (t - k.from) / (k.in ?? 0.01), (k.to - t) / (k.out ?? 0.05)));
+    k.f.forEach((f, j) => { pcm[i] += (j ? 0.5 : 1) * env * Math.sin(TAU * f * t); });
+  }
+}
 // pod mową lektora tętno, tło i pisk schodzą o ok. 8 dB (rampa 80 ms na wejściu i wyjściu)
 const VOICE = FILM.voice ?? [];
 const DUCK = 0.45, RAMP = 0.08;

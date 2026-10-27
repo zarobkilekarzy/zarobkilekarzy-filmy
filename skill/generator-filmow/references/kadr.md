@@ -65,6 +65,11 @@ kadru (kontrola: > 15 zn./s) → większy `hold` albo krótszy tekst w kadrze.
 | `group: 'nazwa'` | kolejne ujęcia na tym samym układzie (np. wykres): najazd kamery idzie ciągle, elementy już stojące nie wchodzą od nowa (`mono(…, lt, -1)`) |
 | `bare: true` | plansza bez logo i stopki (np. `endCard`) |
 | `hold`, `gap` | czas na doczytanie po kwestii, pauza między klipami kwestii |
+| `sound(d)` | dźwięk przypięty do ujęcia (`ticks`, `piks`, `tones`, czasy od cięcia) — opis w README, „Dźwięk” |
+
+Koniec filmu: `...ending()` zamiast własnej planszy — wspólna końcówka marki (linia EKG zamarza w znak, plansza,
+lektor czyta nazwę; README, „Końcówka”). Bez treści filmu: adres czy wezwanie należą do ostatniego ujęcia filmu.
+Nie dopisuj jej pików, tonu ani kwestii w `sound()` i `teksty.js` filmu.
 
 ## Częste błędy
 

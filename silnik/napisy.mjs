@@ -24,6 +24,9 @@ const NAME = path.basename(DIR);
 const page = await openFilm({ film: FILM_REL, archive });
 const FILM = await page.evaluate('window.FILM');
 const SHOWN = await page.evaluate('typeof SHOWN === "undefined" ? {} : SHOWN');
+// nazwa marki czytana przez lektora (plansza końcówki): w każdym języku ten sam zapis nazwy, bez tłumaczenia
+const BRAND = await page.evaluate('typeof NAZWA_LEKTOR === "undefined" || !NAZWA_LEKTOR ? null : [NAZWA_LEKTOR, NAZWA + NAZWA_PRZYROSTEK]');
+const brand = (t) => (BRAND && t === BRAND[0] ? BRAND[1] : undefined);
 page.close(); closeServer();
 if (!FILM.voice.length) { console.log('Film nie ma nagrania lektora (lektor.js) — napisy liczy się z czasów mowy.'); process.exit(1); }
 
@@ -34,7 +37,7 @@ const tr = Object.fromEntries(LANGS.slice(1).map((l) => {
 
 if (argv.includes('--brakujace')) {
   for (const l of LANGS.slice(1)) {
-    const miss = FILM.voice.map((v) => v.text).filter((t) => !tr[l]?.[t]);
+    const miss = FILM.voice.map((v) => v.text).filter((t) => !tr[l]?.[t] && !brand(t));
     console.log(`\n${l}: ${miss.length} brakujących`);
     if (miss.length) console.log(JSON.stringify(Object.fromEntries(miss.map((t) => [t, ''])), null, 2));
   }
@@ -109,7 +112,7 @@ function lines(s) {
 async function cues(lang) {
   const out = [], warn = [], missing = [];
   for (const [i, v] of FILM.voice.entries()) {
-    let text = lang === 'pl' ? (SHOWN[v.text] ?? v.text) : tr[lang]?.[v.text];
+    let text = lang === 'pl' ? (SHOWN[v.text] ?? v.text) : tr[lang]?.[v.text] ?? brand(v.text);
     if (!text) { missing.push(v.text); continue; }
     text = bind(await money(text, lang), lang);
     const next = FILM.voice[i + 1]?.from ?? FILM.dur;

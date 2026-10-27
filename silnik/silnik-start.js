@@ -5,7 +5,10 @@
 // Ujęcie trwa co najmniej: wejście lektora + mowa (z pauzami między klipami) + oddech + czas na
 // doczytanie kadru (hold).
 SHOTS.forEach((s, i) => { IDX[s.id] = i; });
-PARTS = SHOTS.map((s) => { const l = window.TEKSTY[s.id]; return Array.isArray(l) ? l : l ? [l] : []; });
+// kwestia z teksty.js, a gdy jej nie ma — domyślna kwestia ujęcia (`vo`, np. nazwa marki na planszy końcówki)
+PARTS = SHOTS.map((s) => { const l = window.TEKSTY[s.id] ?? s.vo; return Array.isArray(l) ? l : l ? [l] : []; });
+// nazwa marki czytana przez lektora: w napisach zapis nazwy (zarobkilekarzy.pl), chyba że film podał własny
+if (NAZWA_LEKTOR && !(NAZWA_LEKTOR in SHOWN)) SHOWN[NAZWA_LEKTOR] = NAZWA + NAZWA_PRZYROSTEK;
 LINES = PARTS.map((p) => p.join(' '));
 gapOf = (n) => (SHOTS[n].gap ?? GAP) * PAUSE_K;
 SHOTS.forEach((s, i) => { s.n = i; s.d = Math.max(s.d, LINES[i] ? VO_IN + speech(i) + VO_PAD + (s.hold ?? 0) * PAUSE_K : 0); });
@@ -16,7 +19,18 @@ const shotAt = (t) => SHOTS.find((s) => t >= s.t0 && t < s.t1) ?? SHOTS.at(-1);
 
 /* ---------- dźwięk: projekt w proto/film.js (sound) ---------- */
 const T = (id) => SHOTS[IDX[id]].t0;
-const { TICKS = [], PIKS = [] } = sound();
+const { TICKS = [], PIKS = [], TONES = [] } = sound();
+// Dźwięk przypięty do ujęcia (pole `sound(d)`, np. końcówka `ending`): czasy liczone od cięcia ujęcia → czas filmu.
+for (const s of SHOTS) {
+  if (!s.sound) continue;
+  const o = s.sound(s.d);
+  for (const k of o.ticks ?? []) TICKS.push({ ...k, t: s.t0 + k.t });
+  for (const p of o.piks ?? []) PIKS.push(typeof p === 'number' ? s.t0 + p : { ...p, t: s.t0 + p.t });
+  for (const k of o.tones ?? []) TONES.push({ ...k, from: s.t0 + k.from, to: s.t0 + k.to });
+}
+TICKS.sort((a, b) => a.t - b.t);
+// Ton ciągły: głośność g z narastaniem `in` i wyciszeniem `out` (s); kolejne częstotliwości o połowę ciszej (barwa piku).
+const toneEnv = (k, t) => k.g * Math.max(0, Math.min(1, (t - k.from) / (k.in ?? 0.01), (k.to - t) / (k.out ?? 0.05)));
 // Klipy lektora na osi filmu: mowa (c.start w pliku) zaczyna się w partStart po cięciu.
 // REC.dir względem katalogu filmu (starsze lektor.js: adres od korzenia serwera, z „/” na początku).
 const REC_DIR = REC?.dir?.startsWith('/') ? REC.dir : window.FILM_DIR + (REC?.dir ?? '');
@@ -88,7 +102,29 @@ function tone(freqs, gain, dur, attack = 0.002) {
   });
 }
 const tick = (k) => tone(k.f, k.g, 0.045);
-const pik = () => tone([700, 350], 0.18, 0.22, 0.008);
+const pik = (g = 1) => tone([700, 350], 0.18 * g, 0.22, 0.008);
+// tony ciągłe (TONES): oscylatory grają, dopóki odtwarzanie jest w środku tonu; głośność ustawiana co klatkę
+const toneNodes = new Map();
+function tones(duck) {
+  for (const k of TONES) {
+    const on = !!actx && state.sound && state.playing && state.t >= k.from && state.t < k.to;
+    let n = toneNodes.get(k);
+    if (on && !n) {
+      const out = actx.createGain();
+      out.gain.value = 0;
+      out.connect(actx.destination);
+      const osc = k.f.map((f, i) => {
+        const o = actx.createOscillator(), w = actx.createGain();
+        o.frequency.value = f; w.gain.value = i ? 0.5 : 1;
+        o.connect(w).connect(out); o.start();
+        return o;
+      });
+      toneNodes.set(k, (n = { out, osc }));
+    }
+    if (!on && n) { n.osc.forEach((o) => o.stop()); n.out.disconnect(); toneNodes.delete(k); continue; }
+    if (n) n.out.gain.setTargetAtTime(0.8 * toneEnv(k, state.t) * duck, actx.currentTime, 0.015);
+  }
+}
 const playing = new Set();
 function voice(v) {
   const a = new Audio(v.file);
@@ -118,14 +154,14 @@ function show() {
 }
 
 function loop(now) {
+  // pod mową lektora tykanie, piki i tony ciszej (jak w eksporcie)
+  const duck = VOICE.some((v) => state.t >= v.from - 0.08 && state.t <= v.to + 0.08) ? 0.45 : 1;
   if (state.playing) {
     const dt = Math.min(0.1, (now - state.last) / 1000), prev = state.t;
     state.t = Math.min(DUR, state.t + dt);
     if (state.sound) {
-      // pod mową lektora tykanie ciszej (jak w eksporcie)
-      const duck = VOICE.some((v) => state.t >= v.from - 0.08 && state.t <= v.to + 0.08) ? 0.45 : 1;
       for (const k of TICKS) if (k.t > prev && k.t <= state.t) tick({ ...k, g: k.g * duck });
-      for (const p of PIKS) if (p > prev && p <= state.t) pik();
+      for (const p of PIKS) { const t = p.t ?? p; if (t > prev && t <= state.t) pik((p.g ?? 1) * duck); }
       for (const v of VOICE) if (v.from > prev && v.from <= state.t) voice(v);
     }
     const s = shotAt(state.t);
@@ -133,6 +169,7 @@ function loop(now) {
     if (state.t >= DUR) { state.playing = false; playBtn.textContent = '▶'; }
     show();
   }
+  tones(duck);
   state.last = now;
   requestAnimationFrame(loop);
 }
@@ -204,7 +241,7 @@ function blurFrame(t, exposure, n) {
   return accCv;
 }
 window.captureBlur = (t, exposure, n) => png(blurFrame(t, exposure, n));
-window.FILM = { dur: DUR, ticks: TICKS, piks: PIKS, voice: VOICE.map(({ _w, ...v }) => v), lines: LINES, vert: VERT,
+window.FILM = { dur: DUR, ticks: TICKS, piks: PIKS, tones: TONES, voice: VOICE.map(({ _w, ...v }) => v), lines: LINES, vert: VERT,
   shots: SHOTS.map((s) => ({ id: s.id, n: s.n, t0: s.t0, t1: s.t1, src: s.src ?? '', theme: typeof s.theme === 'string' ? s.theme : 'zmienny', bare: !!s.bare })),
   // nazwane znaczniki na osi filmu: czas bez poprawki z odtwarzacza (`base`) i z poprawką (`t`)
   znaczniki: Object.entries(typeof ZNACZNIKI === 'undefined' ? {} : ZNACZNIKI).map(([name, z]) => {
